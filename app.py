@@ -1848,23 +1848,6 @@ with tabs[2]:
                 st.warning(f"🟠 **At Risk**: Take action within 7-14 days to stay on track.")
     else:
         st.success("✅ **All tasks assigned!** Project is on track with full resource allocation.")
-    
-    # Additional metrics
-    with st.expander("📈 Detailed Metrics"):
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            total_duration = (gantt_df['Finish'].max() - gantt_df['Start'].min()).days if len(gantt_df) > 0 else 0
-            st.metric("Total Project Duration", f"{total_duration} days")
-        with col2:
-            avg_duration = gantt_df["Duration"].mean() if len(gantt_df) > 0 else 0
-            st.metric("Avg Task Duration", f"{avg_duration:.1f} days")
-        with col3:
-            # Calculate average delay from expected_delay_days or from current/projected delays
-            avg_delay = max(current_delay_days, projected_delay_days) if (current_delay_days > 0 or projected_delay_days > 0) else 0
-            if avg_delay > 0:
-                st.metric("Average Delay", f"{avg_delay:.1f} days")
-            else:
-                st.metric("Average Delay", "0 days")
 
 # ============================================
 # TAB 4: WORKLOAD ANALYSIS
