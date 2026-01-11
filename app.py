@@ -249,40 +249,97 @@ def to_date(v):
         return None
 
 def size_to_effort(s):
-    """Map t-shirt size to a numeric effort unit."""
-    mapping = {"XS": 1.0, "S": 2.0, "M": 3.0, "L": 5.0, "XL": 8.0}
+    """
+    Map T-shirt size (XS-XL) to FTE (Full-Time Equivalent) days.
+    
+    T-shirt sizes represent relative effort:
+    XS = 0.5 FTE days
+    S = 1.0 FTE days
+    M = 2.0 FTE days
+    L = 4.0 FTE days
+    XL = 8.0 FTE days
+    
+    Also supports numeric format (1-5) as fallback.
+    """
+    # Primary: Text T-shirt sizes (XS-XL) to FTE days
+    text_mapping = {"XS": 0.5, "S": 1.0, "M": 2.0, "L": 4.0, "XL": 8.0}
+    # Fallback: Numeric T-shirt sizes (1-5) to FTE days
+    numeric_mapping = {1: 0.5, 2: 1.0, 3: 2.0, 4: 4.0, 5: 8.0}
+    
     if pd.isna(s):
-        return 3.0
-    s = str(s).strip().upper()
-    return mapping.get(s, 3.0)
+        return 2.0  # Default to Medium (M)
+    
+    # Try text format first (primary input format)
+    s_str = str(s).strip().upper()
+    if s_str in text_mapping:
+        return text_mapping[s_str]
+    
+    # Fallback: Try numeric format
+    try:
+        num_val = int(float(s))
+        if 1 <= num_val <= 5:
+            return numeric_mapping[num_val]
+    except (ValueError, TypeError):
+        pass
+    
+    # Default to Medium (M = 2.0 FTE days)
+    return 2.0
 
 def parse_skills_importance_cell(v, max_items: int = 3):
-    """Parse skills and importance from cell."""
+    """Parse skills and importance from cell.
+    
+    Supports formats:
+    - "Systems Engineering (5); Product Management (4); Effective Communication (4)"
+    - "1. Requirements Engineering - 5\n2. ADAS System Knowledge - 4"
+    - "Skill Name (5)" or "Skill Name - 5"
+    """
     if v is None or (isinstance(v, float) and np.isnan(v)) or pd.isna(v):
         return []
     s = str(v).strip()
     if not s:
         return []
-    parts = re.split(r"[\n\r]+|;\s*", s)
+    
+    # Split by semicolon (primary) or newline
+    parts = re.split(r";\s*|[\n\r]+", s)
     out = []
+    
     for p in parts:
         p = str(p).strip()
         if not p:
             continue
-        m = re.match(r"^\s*(?:\d+\s*[\.|\)]\s*)?(.*?)\s*[-–—:]\s*(\d+(?:\.\d+)?)\s*$", p)
-        if m:
-            skill = m.group(1).strip()
-            imp = float(m.group(2))
-        else:
-            m2 = re.match(r"^(.*?)\s*\(?\s*(\d+(?:\.\d+)?)\s*\)?\s*$", p)
-            if not m2:
-                continue
-            skill = m2.group(1).strip(" -–—:\t")
+        
+        # Priority 1: Format "Skill Name (5)" - parentheses with importance
+        m1 = re.match(r"^\s*(.+?)\s*\(\s*(\d+(?:\.\d+)?)\s*\)\s*$", p)
+        if m1:
+            skill = m1.group(1).strip()
+            imp = float(m1.group(2))
+            if skill:
+                out.append({"skill": skill, "skill_importance": imp})
+                if len(out) >= max_items:
+                    break
+            continue
+        
+        # Priority 2: Format "1. Skill Name - 5" or "Skill Name - 5" (with dash/en dash/em dash/colon)
+        m2 = re.match(r"^\s*(?:\d+\s*[\.|\)]\s*)?(.*?)\s*[-–—:]\s*(\d+(?:\.\d+)?)\s*$", p)
+        if m2:
+            skill = m2.group(1).strip()
             imp = float(m2.group(2))
-        if skill:
-            out.append({"skill": skill, "skill_importance": imp})
-        if len(out) >= max_items:
-            break
+            if skill:
+                out.append({"skill": skill, "skill_importance": imp})
+                if len(out) >= max_items:
+                    break
+            continue
+        
+        # Priority 3: Format "Skill Name 5" or "Skill Name(5)" (no space before paren)
+        m3 = re.match(r"^\s*(.+?)\s*\(?\s*(\d+(?:\.\d+)?)\s*\)?\s*$", p)
+        if m3:
+            skill = m3.group(1).strip(" -–—:\t()")
+            imp = float(m3.group(2))
+            if skill and skill.lower() not in ["nan", "none"]:
+                out.append({"skill": skill, "skill_importance": imp})
+                if len(out) >= max_items:
+                    break
+    
     return out
 
 def risk_band(score: float) -> str:
@@ -341,14 +398,38 @@ def coverage_missing_and_risk(emp_id: str, skills_req: list):
     return missing, float(clamp01(missing_w / total_w) * 100.0)
 
 def compute_schedule_risk(utilization_peak: float, delay_days: int) -> float:
-    """Simple schedule risk heuristic."""
+    """
+    Compute schedule risk based on utilization and delays.
+    
+    Returns:
+    - 0: No risk (utilization <= 100%, no delay)
+    - 1-30: Low risk (slight overload or small delay)
+    - 30-60: Medium risk (moderate overload or delay)
+    - 60-100: High/Critical risk (severe overload or long delay)
+    """
     base = 0.0
-    if utilization_peak <= 1.0 and delay_days == 0:
-        base = 10.0
+    
+    # Zero risk case: utilization within capacity and no delay
+    # Use <= 0 for delay_days to handle any edge cases, and small tolerance for utilization
+    if utilization_peak <= 1.0 + 1e-6 and delay_days <= 0:
+        return 0.0
+    
+    # Calculate risk from utilization overload
+    # If utilization > 1.0, there's overload
+    if utilization_peak > 1.0:
+        # Map utilization to 0-60 risk points
+        # utilization 1.0 = 0, utilization 2.0 = 60
+        util_component = clamp01((utilization_peak - 1.0) / 1.0) * 60.0
     else:
-        util_component = clamp01((utilization_peak - 1.0) / 1.0) * 70.0
-        delay_component = clamp01(delay_days / 20.0) * 30.0
-        base = util_component + delay_component
+        util_component = 0.0
+    
+    # Calculate risk from delays
+    # Map delay days to 0-40 risk points
+    # 0 days = 0, 20 days = 40
+    delay_component = clamp01(delay_days / 20.0) * 40.0
+    
+    base = util_component + delay_component
+    
     return float(clamp01(base / 100.0) * 100.0 if base > 100 else base)
 
 def daterange(d0: date, d1: date):
@@ -371,7 +452,7 @@ with st.sidebar.expander("Assignment Rules", expanded=True):
         min_value=1,
         max_value=5,
         value=3,
-        help="Skills with importance above this threshold are mandatory"
+        help="Skills with importance >= this threshold are mandatory. Employees must have ALL mandatory skills to be assigned."
     )
     team_first = st.checkbox(
         "Prefer Same Department",
@@ -415,7 +496,7 @@ with tabs[0]:
             "Upload Tasks Excel File",
             type=["xlsx"],
             key="tasks_upl",
-            help="Required columns: task_id, task_name, department, start_date, end_date, work_size. Optional: priority"
+            help="Required columns: task_id, task_name, department, start_date, end_date, work_size. Optional: priority, phase (for phase grouping)"
         )
         if task_file:
             st.success(f"{task_file.name} uploaded")
@@ -446,9 +527,29 @@ with tabs[0]:
         st.error(f"Error reading files: {str(e)}")
         st.stop()
     
-    # Normalize column names
-    tasks_raw.columns = [c.lower().strip() for c in tasks_raw.columns]
-    people_raw.columns = [c.lower().strip() for c in people_raw.columns]
+    # Normalize column names and handle duplicates
+    def normalize_columns(df):
+        """Normalize column names to lowercase and handle duplicates"""
+        normalized = [c.lower().strip() for c in df.columns]
+        # Handle duplicates by appending _1, _2, etc.
+        seen = {}
+        result = []
+        for col in normalized:
+            if col in seen:
+                seen[col] += 1
+                result.append(f"{col}_{seen[col]}")
+            else:
+                seen[col] = 0
+                result.append(col)
+        return result
+    
+    tasks_raw.columns = normalize_columns(tasks_raw)
+    people_raw.columns = normalize_columns(people_raw)
+    
+    # Handle any remaining duplicate columns (safety check)
+    if tasks_raw.columns.duplicated().any():
+        # Remove duplicates by keeping first occurrence
+        tasks_raw = tasks_raw.loc[:, ~tasks_raw.columns.duplicated()]
     
     # Required columns - PRIORITY IS NOW OPTIONAL
     task_required = ["task_id", "task_name", "department", "start_date", "end_date", "work_size"]
@@ -468,6 +569,27 @@ with tabs[0]:
     if "priority" not in tasks_raw.columns:
         tasks_raw["priority"] = "Medium"  # Default priority
     
+    # Handle optional phase field - now that duplicates are merged, just ensure it exists and is clean
+    if "phase" in tasks_raw.columns:
+        # Ensure phase values are strings and handle NaN/None, but preserve actual phase names
+        # Convert to string first, then handle nulls
+        tasks_raw["phase"] = tasks_raw["phase"].astype(str)
+        # Replace string representations of NaN/None with actual NaN, then fill
+        tasks_raw["phase"] = tasks_raw["phase"].replace(["nan", "None", "NaN", "NaT", "<NA>"], pd.NA)
+        tasks_raw["phase"] = tasks_raw["phase"].fillna("Uncategorized")
+        # Replace empty strings with Uncategorized
+        tasks_raw["phase"] = tasks_raw["phase"].replace("", "Uncategorized")
+        # Strip whitespace
+        tasks_raw["phase"] = tasks_raw["phase"].str.strip()
+    else:
+        # If phase column doesn't exist, set default
+        tasks_raw["phase"] = "Uncategorized"  # Default phase
+    
+    # Final check: ensure no duplicate column names (safety net)
+    if tasks_raw.columns.duplicated().any():
+        # Remove duplicates by keeping first occurrence
+        tasks_raw = tasks_raw.loc[:, ~tasks_raw.columns.duplicated()]
+    
     # Parse dates
     tasks_raw["start_date"] = tasks_raw["start_date"].apply(to_date)
     tasks_raw["end_date"] = tasks_raw["end_date"].apply(to_date)
@@ -476,13 +598,42 @@ with tabs[0]:
     people_raw["skill"] = people_raw["skill"].astype(str).str.strip()
     skills_list = sorted([s for s in people_raw["skill"].dropna().unique().tolist() if str(s).strip()])
     
-    # Detect existing skills column
+    # Detect existing skills column - look for various possible column names
     skills_blob_col = None
+    
+    # First pass: Look for explicit patterns
     for c in tasks_raw.columns:
-        lc = str(c).lower()
-        if ("skills needed" in lc and "importance" in lc) or ("skills" in lc and "importance" in lc) or ("skills needed" in lc):
+        lc = str(c).lower().strip()
+        # Priority 1: columns with both "skills" and "importance" (most common)
+        if "skills" in lc and "importance" in lc:
             skills_blob_col = c
             break
+        # Priority 2: "skills" with "approved" or "db"
+        elif "skills" in lc and ("approved" in lc or "db" in lc):
+            skills_blob_col = c
+            break
+        # Priority 3: "skills needed"
+        elif "skills needed" in lc:
+            skills_blob_col = c
+            break
+    
+    # Second pass: If not found, check content-based detection
+    if skills_blob_col is None:
+        for c in tasks_raw.columns:
+            lc = str(c).lower().strip()
+            # Check if column name suggests skills
+            if "skill" in lc:
+                # Check if this column actually contains skill data format
+                non_null_values = tasks_raw[c].dropna()
+                if len(non_null_values) > 0:
+                    sample_val = str(non_null_values.iloc[0])
+                    # Look for semicolon-separated format with parentheses (your format)
+                    if ";" in sample_val and "(" in sample_val and ")" in sample_val:
+                        # Verify it matches the pattern "Skill (number)"
+                        test_parse = parse_skills_importance_cell(sample_val)
+                        if len(test_parse) > 0:
+                            skills_blob_col = c
+                            break
     
     parsed_by_task = {}
     parsed_skill_values = set()
@@ -496,7 +647,14 @@ with tabs[0]:
     
     editor_skill_options = sorted({s for s in (set(skills_list) | parsed_skill_values) if str(s).strip()})
     if skills_blob_col is not None:
-        st.info(f"Detected skills column: '{skills_blob_col}'. Pre-filled below for editing.")
+        # Show how many tasks have skills parsed
+        tasks_with_skills = len([tid for tid, skills in parsed_by_task.items() if len(skills) > 0])
+        st.success(f"✓ Detected skills column: **'{skills_blob_col}'**. Parsed skills from {tasks_with_skills} tasks. Pre-filled below for editing.")
+    else:
+        # Debug: show available columns that might be skills
+        potential_cols = [c for c in tasks_raw.columns if 'skill' in str(c).lower()]
+        if potential_cols:
+            st.warning(f"Skills column not auto-detected. Found potential columns: {potential_cols}. Please check column names.")
     
     # Build skill editor
     st.subheader("Define Task Skills & Importance")
@@ -583,6 +741,11 @@ with tabs[0]:
         with st.expander("Preview: Tasks Data", expanded=False):
             st.dataframe(tasks_raw.head(10), use_container_width=True)
             st.caption(f"Total: {len(tasks_raw)} tasks")
+            # Show phase info if available
+            if "phase" in tasks_raw.columns:
+                unique_phases = tasks_raw["phase"].dropna().unique()
+                if len(unique_phases) > 0:
+                    st.caption(f"Phases detected: {', '.join([str(p) for p in unique_phases[:5]])}{'...' if len(unique_phases) > 5 else ''}")
     
     with col2:
         with st.expander("Preview: People Data", expanded=False):
@@ -648,11 +811,22 @@ for tid, grp in tasks_long.groupby("task_id"):
     duration_days = max(1, (end - start).days + 1)
     # Handle optional priority
     priority_val = grp["priority"].iloc[0] if "priority" in grp.columns and not grp["priority"].isna().iloc[0] else "Medium"
+    # Handle optional phase - get from first row of the group
+    if "phase" in grp.columns:
+        phase_val = grp["phase"].iloc[0]
+        # Handle NaN, None, or string "nan"
+        if pd.isna(phase_val) or phase_val is None or str(phase_val).lower() in ["nan", "none", ""]:
+            phase_val = "Uncategorized"
+        else:
+            phase_val = str(phase_val).strip()
+    else:
+        phase_val = "Uncategorized"
     task_objs.append({
         "task_id": tid,
         "task_name": grp["task_name"].iloc[0],
         "department": grp["department"].iloc[0],
         "priority": priority_val,
+        "phase": phase_val,
         "work_size": grp["work_size"].iloc[0],
         "work_size_num": float(grp["work_size_num"].iloc[0]),
         "start_date": start,
@@ -682,6 +856,7 @@ all_days = daterange(global_start, global_end)
 daily_load = {e: {d: 0.0 for d in all_days} for e in employees}
 
 def window_peak_util(emp_id: str, d0: date, d1: date):
+    """Calculate peak utilization during a time window."""
     days = daterange(d0, d1)
     if not days:
         return 0.0
@@ -690,14 +865,76 @@ def window_peak_util(emp_id: str, d0: date, d1: date):
         cap = 0.01
     return max((daily_load[emp_id].get(d,0.0)/cap) for d in days)
 
+def has_capacity_for_task(emp_id: str, d0: date, d1: date, total_effort: float, max_utilization: float = 1.0):
+    """
+    Check if employee has capacity for a task BEFORE assignment.
+    
+    Simulates adding the task load (front-loaded) and checks if utilization
+    stays within max_utilization (default 100%).
+    
+    Returns: (has_capacity: bool, estimated_peak_util: float)
+    """
+    days = daterange(d0, d1)
+    if not days:
+        return False, 0.0
+    
+    cap = float(emp_fte.get(emp_id, 1.0))
+    if cap <= 0:
+        cap = 0.01
+    
+    num_days = len(days)
+    # Calculate front-loaded distribution (same as add_task_load)
+    weights = []
+    for i in range(num_days):
+        weight = 2.0 - (1.5 * i / max(1, num_days - 1))
+        weights.append(weight)
+    total_weight = sum(weights)
+    if total_weight > 0:
+        weights = [w * num_days / total_weight for w in weights]
+    
+    # Simulate adding the task load
+    peak_util = 0.0
+    for i, d in enumerate(days):
+        current_load = daily_load[emp_id].get(d, 0.0)
+        additional_load = total_effort * weights[i] / num_days
+        total_load = current_load + additional_load
+        util = total_load / cap
+        peak_util = max(peak_util, util)
+    
+    has_capacity = peak_util <= max_utilization
+    return has_capacity, peak_util
+
 def add_task_load(emp_id: str, d0: date, d1: date, total_effort: float):
+    """
+    Add task load to employee's daily schedule with FRONT-LOADED distribution.
+    More work is allocated at the beginning of the task period.
+    """
     days = daterange(d0, d1)
     if not days:
         return
-    per_day = total_effort / len(days)
-    for d in days:
+    
+    num_days = len(days)
+    if num_days == 0:
+        return
+    
+    # Front-loaded distribution: allocate more work at the beginning
+    # Use a decreasing weight: first day gets most, last day gets least
+    # Weights decrease linearly from 2.0 to 0.5
+    weights = []
+    for i in range(num_days):
+        # Weight decreases from 2.0 (first day) to 0.5 (last day)
+        weight = 2.0 - (1.5 * i / max(1, num_days - 1))
+        weights.append(weight)
+    
+    # Normalize weights so they sum to num_days (maintains total effort)
+    total_weight = sum(weights)
+    if total_weight > 0:
+        weights = [w * num_days / total_weight for w in weights]
+    
+    # Distribute effort according to weights
+    for i, d in enumerate(days):
         if d in daily_load[emp_id]:
-            daily_load[emp_id][d] += per_day
+            daily_load[emp_id][d] += total_effort * weights[i] / num_days
 
 def estimate_delay_days(emp_id: str, d0: date, d1: date, total_effort: float):
     cap = float(emp_fte.get(emp_id, 1.0))
@@ -738,13 +975,20 @@ def person_allocated_skill_total(emp_id: str, skills_req: list):
     return allocated
 
 def has_mandatory_skills(emp_id: str, skills_req: list):
+    """
+    Check if employee has all mandatory skills.
+    Mandatory skills are those with importance >= mandatory_threshold.
+    Employee must have ALL mandatory skills to be eligible for assignment.
+    """
     for s in skills_req:
-        if float(s["skill_importance"]) > mandatory_threshold:
+        skill_importance = float(s["skill_importance"])
+        # Skills with importance >= threshold are mandatory
+        if skill_importance >= mandatory_threshold:
             sk = s["skill"]
             prow = people_raw[(people_raw["employee_id"]==emp_id) & (people_raw["skill"]==sk)]
             if prow.empty:
-                return False
-    return True
+                return False  # Missing a mandatory skill
+    return True  # Has all mandatory skills
 
 assignments = []
 for _, t in tasks_df.iterrows():
@@ -766,17 +1010,34 @@ for _, t in tasks_df.iterrows():
     best = None
     best_overall = None
     for emp in candidates:
+        # STEP 1: Check skills first
         if not has_mandatory_skills(emp, skills_req):
             continue
         
         allocated_total = person_allocated_skill_total(emp, skills_req)
+        
+        # Additional check: if employee has 0% skill match (no skills at all), skip them
+        # This handles the case where all skills are optional but employee has none
+        if allocated_total <= 0 and required_total > 0:
+            continue  # Skip employees with zero skill match
+        
+        # STEP 2: Check capacity BEFORE assigning
+        # If employee doesn't have capacity, skip them and look for someone else
+        has_capacity, estimated_peak_util = has_capacity_for_task(emp, d0, d1, effort, max_utilization=1.0)
+        if not has_capacity:
+            continue  # Skip - no capacity available
+        
+        # STEP 3: Calculate risks only for employees with skills AND capacity
         gap_skill_risk = compute_skill_risk(required_total, allocated_total)
         missing_skills, coverage_risk = coverage_missing_and_risk(emp, skills_req)
         skill_risk = max(gap_skill_risk, coverage_risk)
         
+        # Use the estimated peak utilization from capacity check
+        util_peak = estimated_peak_util
         delay_days = estimate_delay_days(emp, d0, d1, effort)
-        util_peak = window_peak_util(emp, d0, d1)
-        sched_risk = compute_schedule_risk(util_peak, delay_days)
+        # Ensure delay_days is an integer for the comparison
+        delay_days_int = int(round(delay_days))
+        sched_risk = compute_schedule_risk(util_peak, delay_days_int)
         
         overall = max(skill_risk, sched_risk)
         
@@ -786,6 +1047,7 @@ for _, t in tasks_df.iterrows():
                 "task_name": t["task_name"],
                 "department": t["department"],
                 "priority": t["priority"],
+                "phase": str(t.get("phase", "Uncategorized")) if "phase" in t else "Uncategorized",
                 "assignee": emp,
                 "work_size": t["work_size"],
                 "skill_required_total": required_total,
@@ -807,11 +1069,30 @@ for _, t in tasks_df.iterrows():
             best_overall = overall
     
     if best is None:
+        # No one has skills AND capacity - flag as unassigned with delay
+        # Estimate delay by finding when someone might have capacity
+        estimated_delay = 0
+        # Try to find when any eligible employee might have capacity
+        for emp in candidates:
+            if not has_mandatory_skills(emp, skills_req):
+                continue
+            allocated_total = person_allocated_skill_total(emp, skills_req)
+            if allocated_total <= 0 and required_total > 0:
+                continue
+            # Check if they'll have capacity later (simple heuristic: check 30 days out)
+            future_start = d0 + timedelta(days=30)
+            future_end = d1 + timedelta(days=30)
+            has_capacity_future, _ = has_capacity_for_task(emp, future_start, future_end, effort, max_utilization=1.0)
+            if has_capacity_future:
+                estimated_delay = 30  # Rough estimate
+                break
+        
         best = {
             "task_id": tid,
             "task_name": t["task_name"],
             "department": t["department"],
             "priority": t["priority"],
+            "phase": str(t.get("phase", "Uncategorized")) if "phase" in t else "Uncategorized",
             "assignee": "UNASSIGNED",
             "work_size": t["work_size"],
             "skill_required_total": required_total,
@@ -824,11 +1105,11 @@ for _, t in tasks_df.iterrows():
             "schedule_risk": 100.0,
             "overall_risk": 100.0,
             "risk_band": "Critical",
-            "expected_delay_days": None,
+            "expected_delay_days": estimated_delay,  # Flag delay when unassigned due to capacity
             "target_start": d0,
             "target_end": d1,
             "planned_start": d0,
-            "planned_finish": d1,
+            "planned_finish": d1 + timedelta(days=estimated_delay),
         }
     
     if best["assignee"] != "UNASSIGNED":
@@ -900,31 +1181,67 @@ with tabs[1]:
     st.markdown("---")
     
     # Filter and sort options
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        filter_risk = st.multiselect(
-            "Filter by Risk",
-            options=["Low", "Medium", "High", "Critical"],
-            default=["Low", "Medium", "High", "Critical"]
-        )
-    with col2:
-        filter_assignee = st.multiselect(
-            "Filter by Assignee",
-            options=sorted(assign_df["assignee"].unique().tolist()),
-            default=sorted(assign_df["assignee"].unique().tolist())
-        )
-    with col3:
-        sort_by = st.selectbox(
-            "Sort by",
-            options=["Risk Band", "Priority", "Task ID", "Assignee"],
-            index=0
-        )
+    has_phase_col = "phase" in assign_df.columns and assign_df["phase"].notna().any()
     
-    # Filter dataframe
-    filtered_df = assign_df[
-        (assign_df["risk_band"].isin(filter_risk)) &
-        (assign_df["assignee"].isin(filter_assignee))
-    ]
+    if has_phase_col:
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            filter_risk = st.multiselect(
+                "Filter by Risk",
+                options=["Low", "Medium", "High", "Critical"],
+                default=["Low", "Medium", "High", "Critical"]
+            )
+        with col2:
+            filter_assignee = st.multiselect(
+                "Filter by Assignee",
+                options=sorted(assign_df["assignee"].unique().tolist()),
+                default=sorted(assign_df["assignee"].unique().tolist())
+            )
+        with col3:
+            filter_phase = st.multiselect(
+                "Filter by Phase",
+                options=sorted(assign_df["phase"].dropna().unique().tolist()),
+                default=sorted(assign_df["phase"].dropna().unique().tolist())
+            )
+        with col4:
+            sort_by = st.selectbox(
+                "Sort by",
+                options=["Risk Band", "Priority", "Phase", "Task ID", "Assignee"],
+                index=0
+            )
+        
+        # Filter dataframe
+        filtered_df = assign_df[
+            (assign_df["risk_band"].isin(filter_risk)) &
+            (assign_df["assignee"].isin(filter_assignee)) &
+            (assign_df["phase"].isin(filter_phase))
+        ]
+    else:
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            filter_risk = st.multiselect(
+                "Filter by Risk",
+                options=["Low", "Medium", "High", "Critical"],
+                default=["Low", "Medium", "High", "Critical"]
+            )
+        with col2:
+            filter_assignee = st.multiselect(
+                "Filter by Assignee",
+                options=sorted(assign_df["assignee"].unique().tolist()),
+                default=sorted(assign_df["assignee"].unique().tolist())
+            )
+        with col3:
+            sort_by = st.selectbox(
+                "Sort by",
+                options=["Risk Band", "Priority", "Task ID", "Assignee"],
+                index=0
+            )
+        
+        # Filter dataframe
+        filtered_df = assign_df[
+            (assign_df["risk_band"].isin(filter_risk)) &
+            (assign_df["assignee"].isin(filter_assignee))
+        ]
     
     # Sort
     if sort_by == "Risk Band":
@@ -937,6 +1254,8 @@ with tabs[1]:
         filtered_df = filtered_df.copy()
         filtered_df["_prio_order"] = filtered_df["priority"].astype(str).str.lower().map(prio_order).fillna(99)
         filtered_df = filtered_df.sort_values(["_prio_order", "risk_band"]).drop(columns=["_prio_order"])
+    elif sort_by == "Phase" and has_phase_col:
+        filtered_df = filtered_df.sort_values(["phase", "risk_band"])
     elif sort_by == "Task ID":
         filtered_df = filtered_df.sort_values("task_id")
     else:
@@ -944,9 +1263,12 @@ with tabs[1]:
     
     # Display table with styling
     display_cols = [
-        "task_id", "task_name", "department", "priority", "assignee", "work_size",
+        "task_id", "task_name", "department", "phase", "priority", "assignee", "work_size",
         "risk_band", "skill_risk", "schedule_risk", "expected_delay_days"
     ]
+    # Remove phase if not available
+    if "phase" not in filtered_df.columns:
+        display_cols = [c for c in display_cols if c != "phase"]
     
     st.dataframe(
         filtered_df[display_cols],
@@ -964,14 +1286,15 @@ with tabs[1]:
 # TAB 3: GANTT CHART
 # ============================================
 with tabs[2]:
-    st.header("Gantt Chart")
-    st.caption("Visual timeline of all tasks with risk-based coloring")
+    st.header("📊 Gantt Chart - Hierarchical View")
+    st.caption("✨ NEW: Phases → Tasks with improved layout and left-aligned text")
+    
+    # Check if phase column exists in assign_df
+    has_phase_col = "phase" in assign_df.columns and assign_df["phase"].notna().any()
     
     gantt_df = assign_df.copy()
     gantt_df["Start"] = pd.to_datetime(gantt_df["planned_start"])
     gantt_df["Finish"] = pd.to_datetime(gantt_df["planned_finish"])
-    gantt_df["Task"] = gantt_df["task_name"].astype(str) + " (" + gantt_df["task_id"].astype(str) + ")"
-    gantt_df["Assignee"] = gantt_df["assignee"].astype(str)
     gantt_df["Duration"] = (gantt_df["Finish"] - gantt_df["Start"]).dt.days
     
     # Color mapping - Wayve palette
@@ -982,49 +1305,235 @@ with tabs[2]:
         "Critical": "#DC2626"
     }
     
-    fig = px.timeline(
-        gantt_df,
-        x_start="Start",
-        x_end="Finish",
-        y="Task",
-        color="risk_band",
-        color_discrete_map=color_map,
-        hover_data={
-            "Assignee": True,
-            "skill_risk": ":.0f",
-            "schedule_risk": ":.0f",
-            "expected_delay_days": True,
-            "Duration": True,
-            "Start": False,
-            "Finish": False,
-        },
-        labels={"risk_band": "Risk Level"}
-    )
+    # Phase filter (always show if phases exist)
+    if has_phase_col:
+        available_phases = sorted(gantt_df["phase"].dropna().unique().tolist())
+        if len(available_phases) > 0:
+            selected_phases = st.multiselect(
+                "**Filter by Phase**",
+                options=available_phases,
+                default=available_phases,
+                help="Select phases to display in the Gantt chart"
+            )
+            gantt_df = gantt_df[gantt_df["phase"].isin(selected_phases)]
     
-    fig.update_yaxes(autorange="reversed", title="")
-    fig.update_xaxes(title="Timeline")
-    fig.update_layout(
-        height=max(600, 40*len(gantt_df)),
-        margin=dict(l=200, r=50, t=50, b=50),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        hovermode="closest",
-        plot_bgcolor='white',
-        paper_bgcolor='white',
-        font=dict(family="Inter, sans-serif", size=11)
-    )
+    st.markdown("---")
     
-    st.plotly_chart(fig, use_container_width=True)
+    # Create hierarchical Gantt chart: Phases → Tasks
+    if has_phase_col:
+        # Build hierarchical data structure
+        hierarchical_data = []
+        
+        # Sort phases by start date
+        phases_sorted = sorted(gantt_df["phase"].dropna().unique())
+        
+        for phase in phases_sorted:
+            phase_tasks = gantt_df[gantt_df["phase"] == phase].copy()
+            if len(phase_tasks) == 0:
+                continue
+            
+            # Calculate phase summary
+            phase_start = phase_tasks["Start"].min()
+            phase_finish = phase_tasks["Finish"].max()
+            avg_risk = phase_tasks["overall_risk"].mean()
+            phase_risk_band = risk_band(avg_risk)
+            task_count = len(phase_tasks)
+            assigned_count = len(phase_tasks[phase_tasks["assignee"] != "UNASSIGNED"])
+            
+            # Add phase row (parent)
+            hierarchical_data.append({
+                "Name": f"📁 {phase}",
+                "Type": "Phase",
+                "Phase": str(phase),
+                "Start": phase_start,
+                "Finish": phase_finish,
+                "Duration": (phase_finish - phase_start).days,
+                "Risk Band": phase_risk_band,
+                "Task Count": task_count,
+                "Assigned": assigned_count,
+                "Avg Risk": avg_risk,
+                "task_id": None,
+                "task_name": None,
+                "assignee": None,
+                "skill_risk": None,
+                "schedule_risk": None,
+                "expected_delay_days": None
+            })
+            
+            # Add task rows (children) - indented
+            for _, task in phase_tasks.iterrows():
+                task_name = f"  └─ {task['task_name']} ({task['task_id']})"
+                hierarchical_data.append({
+                    "Name": task_name,
+                    "Type": "Task",
+                    "Phase": str(phase),
+                    "Start": task["Start"],
+                    "Finish": task["Finish"],
+                    "Duration": task["Duration"],
+                    "Risk Band": task["risk_band"],
+                    "Task Count": None,
+                    "Assigned": None,
+                    "Avg Risk": None,
+                    "task_id": task["task_id"],
+                    "task_name": task["task_name"],
+                    "assignee": task["assignee"],
+                    "skill_risk": task["skill_risk"],
+                    "schedule_risk": task["schedule_risk"],
+                    "expected_delay_days": task["expected_delay_days"]
+                })
+        
+        hierarchical_df = pd.DataFrame(hierarchical_data)
+        
+        # Create hierarchical Gantt chart
+        fig = px.timeline(
+            hierarchical_df,
+            x_start="Start",
+            x_end="Finish",
+            y="Name",
+            color="Risk Band",
+            color_discrete_map=color_map,
+            hover_data={
+                "Type": True,
+                "Phase": True,
+                "Duration": True,
+                "Task Count": True,
+                "Assigned": True,
+                "Avg Risk": ":.1f",
+                "assignee": True,
+                "skill_risk": ":.0f",
+                "schedule_risk": ":.0f",
+                "expected_delay_days": True,
+                "Start": False,
+                "Finish": False,
+            },
+            labels={"Risk Band": "Risk Level", "Name": ""},
+        )
+        
+        # Enhanced styling for hierarchical view
+        fig.update_yaxes(
+            autorange="reversed",
+            title="",
+            tickfont=dict(size=11, family="Inter, sans-serif"),
+            showgrid=True,
+            gridcolor="rgba(0,0,0,0.05)"
+        )
+        fig.update_xaxes(
+            title="Timeline",
+            tickfont=dict(size=10, family="Inter, sans-serif"),
+            showgrid=True,
+            gridcolor="rgba(0,0,0,0.05)"
+        )
+        
+        # Calculate height based on number of items (phases + tasks)
+        num_items = len(hierarchical_df)
+        row_height = 35  # Height per row
+        min_height = 500
+        max_height = 2000
+        
+        fig.update_layout(
+            height=min(max(min_height, num_items * row_height), max_height),
+            margin=dict(l=300, r=50, t=30, b=50),  # Increased left margin for better text alignment
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1,
+                font=dict(size=11)
+            ),
+            hovermode="closest",
+            plot_bgcolor='#FAFAFA',
+            paper_bgcolor='white',
+            font=dict(family="Inter, sans-serif", size=11),
+            title_font=dict(size=14, family="Inter, sans-serif"),
+            showlegend=True
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Summary metrics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            phase_count = len([x for x in hierarchical_data if x["Type"] == "Phase"])
+            st.metric("Total Phases", phase_count)
+        with col2:
+            task_count = len([x for x in hierarchical_data if x["Type"] == "Task"])
+            st.metric("Total Tasks", task_count)
+        with col3:
+            total_duration = (hierarchical_df["Finish"].max() - hierarchical_df["Start"].min()).days
+            st.metric("Total Duration", f"{total_duration} days")
+        with col4:
+            unassigned = len([x for x in hierarchical_data if x["Type"] == "Task" and x.get("assignee") == "UNASSIGNED"])
+            st.metric("Unassigned Tasks", unassigned, delta=f"-{unassigned}" if unassigned > 0 else None)
     
-    # Gantt summary
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Total Duration", f"{(gantt_df['Finish'].max() - gantt_df['Start'].min()).days} days")
-    with col2:
-        avg_duration = gantt_df["Duration"].mean()
-        st.metric("Avg Task Duration", f"{avg_duration:.1f} days")
-    with col3:
-        max_delay = gantt_df["expected_delay_days"].max() if gantt_df["expected_delay_days"].notna().any() else 0
-        st.metric("Max Delay", f"{max_delay} days")
+    else:
+        # Task-level view (no phases available)
+        gantt_df["Task"] = gantt_df["task_name"].astype(str) + " (" + gantt_df["task_id"].astype(str) + ")"
+        gantt_df["Assignee"] = gantt_df["assignee"].astype(str)
+        
+        fig = px.timeline(
+            gantt_df,
+            x_start="Start",
+            x_end="Finish",
+            y="Task",
+            color="risk_band",
+            color_discrete_map=color_map,
+            hover_data={
+                "Assignee": True,
+                "skill_risk": ":.0f",
+                "schedule_risk": ":.0f",
+                "expected_delay_days": True,
+                "Duration": True,
+                "Start": False,
+                "Finish": False,
+            },
+            labels={"risk_band": "Risk Level"}
+        )
+        
+        fig.update_yaxes(
+            autorange="reversed",
+            title="",
+            tickfont=dict(size=11, family="Inter, sans-serif"),
+            showgrid=True,
+            gridcolor="rgba(0,0,0,0.05)"
+        )
+        fig.update_xaxes(
+            title="Timeline",
+            tickfont=dict(size=10, family="Inter, sans-serif"),
+            showgrid=True,
+            gridcolor="rgba(0,0,0,0.05)"
+        )
+        
+        fig.update_layout(
+            height=max(600, 40*len(gantt_df)),
+            margin=dict(l=300, r=50, t=30, b=50),  # Increased left margin
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1,
+                font=dict(size=11)
+            ),
+            hovermode="closest",
+            plot_bgcolor='#FAFAFA',
+            paper_bgcolor='white',
+            font=dict(family="Inter, sans-serif", size=11),
+            title_font=dict(size=14, family="Inter, sans-serif")
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Gantt summary
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Duration", f"{(gantt_df['Finish'].max() - gantt_df['Start'].min()).days} days")
+        with col2:
+            avg_duration = gantt_df["Duration"].mean()
+            st.metric("Avg Task Duration", f"{avg_duration:.1f} days")
+        with col3:
+            max_delay = gantt_df["expected_delay_days"].max() if gantt_df["expected_delay_days"].notna().any() else 0
+            st.metric("Max Delay", f"{max_delay} days")
 
 # ============================================
 # TAB 4: WORKLOAD ANALYSIS
@@ -1193,6 +1702,8 @@ with tabs[4]:
         st.markdown(f"### {tinfo['task_name']}")
         st.markdown(f"**Task ID:** {selected}")
         st.markdown(f"**Department:** {tinfo['department']}")
+        if "phase" in tinfo and pd.notna(tinfo.get("phase")):
+            st.markdown(f"**Phase:** {tinfo['phase']}")
         st.markdown(f"**Priority:** {tinfo['priority']}")
         st.markdown(f"**Work Size:** {tinfo['work_size']}")
         st.markdown(f"**Duration:** {tinfo['start_date']} → {tinfo['end_date']} ({tinfo['duration_days']} days)")
