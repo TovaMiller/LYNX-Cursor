@@ -317,7 +317,7 @@ def parse_skills_importance_cell(v, max_items: int = 3):
                 out.append({"skill": skill, "skill_importance": imp})
                 if len(out) >= max_items:
                     break
-            continue
+                continue
         
         # Priority 2: Format "1. Skill Name - 5" or "Skill Name - 5" (with dash/en dash/em dash/colon)
         m2 = re.match(r"^\s*(?:\d+\s*[\.|\)]\s*)?(.*?)\s*[-–—:]\s*(\d+(?:\.\d+)?)\s*$", p)
@@ -1189,19 +1189,22 @@ with tabs[1]:
             filter_risk = st.multiselect(
                 "Filter by Risk",
                 options=["Low", "Medium", "High", "Critical"],
-                default=["Low", "Medium", "High", "Critical"]
+                default=["Low", "Medium", "High", "Critical"],
+                key="alloc_filter_risk_phase"
             )
         with col2:
             filter_assignee = st.multiselect(
                 "Filter by Assignee",
                 options=sorted(assign_df["assignee"].unique().tolist()),
-                default=sorted(assign_df["assignee"].unique().tolist())
+                default=sorted(assign_df["assignee"].unique().tolist()),
+                key="alloc_filter_assignee_phase"
             )
         with col3:
             filter_phase = st.multiselect(
                 "Filter by Phase",
                 options=sorted(assign_df["phase"].dropna().unique().tolist()),
-                default=sorted(assign_df["phase"].dropna().unique().tolist())
+                default=sorted(assign_df["phase"].dropna().unique().tolist()),
+                key="alloc_filter_phase"
             )
         with col4:
             sort_by = st.selectbox(
@@ -1218,30 +1221,32 @@ with tabs[1]:
         ]
     else:
         col1, col2, col3 = st.columns(3)
-        with col1:
-            filter_risk = st.multiselect(
-                "Filter by Risk",
-                options=["Low", "Medium", "High", "Critical"],
-                default=["Low", "Medium", "High", "Critical"]
-            )
-        with col2:
-            filter_assignee = st.multiselect(
-                "Filter by Assignee",
-                options=sorted(assign_df["assignee"].unique().tolist()),
-                default=sorted(assign_df["assignee"].unique().tolist())
-            )
-        with col3:
-            sort_by = st.selectbox(
-                "Sort by",
-                options=["Risk Band", "Priority", "Task ID", "Assignee"],
-                index=0
-            )
-        
-        # Filter dataframe
-        filtered_df = assign_df[
-            (assign_df["risk_band"].isin(filter_risk)) &
-            (assign_df["assignee"].isin(filter_assignee))
-        ]
+    with col1:
+        filter_risk = st.multiselect(
+            "Filter by Risk",
+            options=["Low", "Medium", "High", "Critical"],
+            default=["Low", "Medium", "High", "Critical"],
+            key="alloc_filter_risk_no_phase"
+        )
+    with col2:
+        filter_assignee = st.multiselect(
+            "Filter by Assignee",
+            options=sorted(assign_df["assignee"].unique().tolist()),
+            default=sorted(assign_df["assignee"].unique().tolist()),
+            key="alloc_filter_assignee_no_phase"
+        )
+    with col3:
+        sort_by = st.selectbox(
+            "Sort by",
+            options=["Risk Band", "Priority", "Task ID", "Assignee"],
+            index=0
+        )
+    
+    # Filter dataframe
+    filtered_df = assign_df[
+        (assign_df["risk_band"].isin(filter_risk)) &
+        (assign_df["assignee"].isin(filter_assignee))
+    ]
     
     # Sort
     if sort_by == "Risk Band":
@@ -1313,19 +1318,69 @@ with tabs[2]:
                 "**Filter by Phase**",
                 options=available_phases,
                 default=available_phases,
-                help="Select phases to display in the Gantt chart"
+                help="Select phases to display in the Gantt chart",
+                key="gantt_phase_filter"
             )
             gantt_df = gantt_df[gantt_df["phase"].isin(selected_phases)]
     
     st.markdown("---")
     
-    # Create hierarchical Gantt chart: Phases → Tasks
+    # Create unified Gantt chart with expandable/collapsible phases
     if has_phase_col:
-        # Build hierarchical data structure
-        hierarchical_data = []
+        # Define custom phase order
+        phase_order = ["Scoping", "Test architecture and SW dev", "Testing and approval", "Final approval", "Process"]
         
-        # Sort phases by start date
-        phases_sorted = sorted(gantt_df["phase"].dropna().unique())
+        # Get all phases from data
+        all_phases = gantt_df["phase"].dropna().unique().tolist()
+        
+        # Sort phases: first by custom order, then any remaining phases alphabetically
+        phases_sorted = []
+        for phase in phase_order:
+            # Case-insensitive matching
+            matching_phases = [p for p in all_phases if str(p).strip().lower() == phase.lower()]
+            if matching_phases:
+                phases_sorted.extend(matching_phases)
+        
+        # Add any remaining phases not in the custom order
+        remaining_phases = [p for p in all_phases if p not in phases_sorted]
+        phases_sorted.extend(sorted(remaining_phases))
+        
+        # Initialize session state for expanded phases if not exists
+        if "expanded_phases" not in st.session_state:
+            st.session_state.expanded_phases = set()  # All collapsed by default
+        
+        # Phase expand/collapse controls
+        col1, col2, col3 = st.columns([2, 1, 1])
+        with col1:
+            st.caption("Click the buttons below to expand/collapse each phase")
+        with col2:
+            if st.button("Expand All", key="expand_all"):
+                st.session_state.expanded_phases = set(phases_sorted)
+                st.rerun()
+        with col3:
+            if st.button("Collapse All", key="collapse_all"):
+                st.session_state.expanded_phases = set()
+                st.rerun()
+        
+        # Clickable phase toggle buttons (aligned with chart phases)
+        st.markdown("**Click to toggle phases:**")
+        phase_button_cols = st.columns(min(5, len(phases_sorted)))
+        for idx, phase in enumerate(phases_sorted):
+            col_idx = idx % 5
+            with phase_button_cols[col_idx]:
+                is_expanded = phase in st.session_state.expanded_phases
+                button_text = f"➖ {phase}" if is_expanded else f"➕ {phase}"
+                if st.button(button_text, key=f"phase_toggle_{phase}", use_container_width=True):
+                    if is_expanded:
+                        st.session_state.expanded_phases.discard(phase)
+                    else:
+                        st.session_state.expanded_phases.add(phase)
+                    st.rerun()
+        
+        st.markdown("---")
+        
+        # Build hierarchical data for unified Gantt chart
+        hierarchical_data = []
         
         for phase in phases_sorted:
             phase_tasks = gantt_df[gantt_df["phase"] == phase].copy()
@@ -1340,9 +1395,15 @@ with tabs[2]:
             task_count = len(phase_tasks)
             assigned_count = len(phase_tasks[phase_tasks["assignee"] != "UNASSIGNED"])
             
-            # Add phase row (parent)
+            # Determine expand/collapse icon
+            is_expanded = phase in st.session_state.expanded_phases
+            expand_icon = "➖" if is_expanded else "➕"
+            
+            # Add phase row (always visible) - big and bold
+            # Using HTML-like formatting that will be rendered
+            phase_name = f"{expand_icon} {phase} ({task_count} tasks)"
             hierarchical_data.append({
-                "Name": f"📁 {phase}",
+                "Name": phase_name,
                 "Type": "Phase",
                 "Phase": str(phase),
                 "Start": phase_start,
@@ -1357,34 +1418,39 @@ with tabs[2]:
                 "assignee": None,
                 "skill_risk": None,
                 "schedule_risk": None,
-                "expected_delay_days": None
+                "expected_delay_days": None,
+                "IsExpanded": is_expanded
             })
             
-            # Add task rows (children) - indented
-            for _, task in phase_tasks.iterrows():
-                task_name = f"  └─ {task['task_name']} ({task['task_id']})"
-                hierarchical_data.append({
-                    "Name": task_name,
-                    "Type": "Task",
-                    "Phase": str(phase),
-                    "Start": task["Start"],
-                    "Finish": task["Finish"],
-                    "Duration": task["Duration"],
-                    "Risk Band": task["risk_band"],
-                    "Task Count": None,
-                    "Assigned": None,
-                    "Avg Risk": None,
-                    "task_id": task["task_id"],
-                    "task_name": task["task_name"],
-                    "assignee": task["assignee"],
-                    "skill_risk": task["skill_risk"],
-                    "schedule_risk": task["schedule_risk"],
-                    "expected_delay_days": task["expected_delay_days"]
-                })
+            # Add task rows (only if phase is expanded)
+            if is_expanded:
+                # Sort tasks by start date within phase
+                phase_tasks_sorted = phase_tasks.sort_values("Start")
+                for _, task in phase_tasks_sorted.iterrows():
+                    task_name = f"    └─ {task['task_name']} ({task['task_id']})"
+                    hierarchical_data.append({
+                        "Name": task_name,
+                        "Type": "Task",
+                        "Phase": str(phase),
+                        "Start": task["Start"],
+                        "Finish": task["Finish"],
+                        "Duration": task["Duration"],
+                        "Risk Band": task["risk_band"],
+                        "Task Count": None,
+                        "Assigned": None,
+                        "Avg Risk": None,
+                        "task_id": task["task_id"],
+                        "task_name": task["task_name"],
+                        "assignee": task["assignee"],
+                        "skill_risk": task["skill_risk"],
+                        "schedule_risk": task["schedule_risk"],
+                        "expected_delay_days": task["expected_delay_days"],
+                        "IsExpanded": None
+                    })
         
         hierarchical_df = pd.DataFrame(hierarchical_data)
         
-        # Create hierarchical Gantt chart
+        # Create unified hierarchical Gantt chart
         fig = px.timeline(
             hierarchical_df,
             x_start="Start",
@@ -1406,17 +1472,36 @@ with tabs[2]:
                 "Start": False,
                 "Finish": False,
             },
-            labels={"Risk Band": "Risk Level", "Name": ""},
+            labels={"Risk Band": "Risk Level"},
         )
         
-        # Enhanced styling for hierarchical view
+        # Enhanced styling for hierarchical view with left-aligned text
+        # Create custom tick labels with different font sizes for phases vs tasks
+        tick_labels = []
+        for idx, row in hierarchical_df.iterrows():
+            if row["Type"] == "Phase":
+                # Bold and larger for phases
+                tick_labels.append(row["Name"])
+            else:
+                # Regular for tasks
+                tick_labels.append(row["Name"])
+        
         fig.update_yaxes(
             autorange="reversed",
-            title="",
-            tickfont=dict(size=11, family="Inter, sans-serif"),
+            title=None,  # Remove "undefined" label completely
+            tickfont=dict(size=13, family="Inter, sans-serif"),
             showgrid=True,
-            gridcolor="rgba(0,0,0,0.05)"
+            gridcolor="rgba(0,0,0,0.05)",
+            tickmode='array',
+            tickvals=list(range(len(hierarchical_df))),
+            ticktext=tick_labels,
+            side='left',
+            tickangle=0  # Horizontal text for better readability
         )
+        
+        # Update font for phase rows specifically using annotations or custom styling
+        # Note: Plotly doesn't support per-tick font styling, so we'll make all phase text bold in the data
+        
         fig.update_xaxes(
             title="Timeline",
             tickfont=dict(size=10, family="Inter, sans-serif"),
@@ -1424,15 +1509,15 @@ with tabs[2]:
             gridcolor="rgba(0,0,0,0.05)"
         )
         
-        # Calculate height based on number of items (phases + tasks)
+        # Calculate height based on number of visible items
         num_items = len(hierarchical_df)
-        row_height = 35  # Height per row
+        row_height = 40  # Increased height for better visibility
         min_height = 500
         max_height = 2000
         
         fig.update_layout(
             height=min(max(min_height, num_items * row_height), max_height),
-            margin=dict(l=300, r=50, t=30, b=50),  # Increased left margin for better text alignment
+            margin=dict(l=450, r=50, t=30, b=50),  # Increased left margin for better left alignment
             legend=dict(
                 orientation="h",
                 yanchor="bottom",
@@ -1449,21 +1534,31 @@ with tabs[2]:
             showlegend=True
         )
         
+        # Ensure y-axis labels are left-aligned
+        fig.update_yaxes(
+            tickangle=0,  # Horizontal text
+            side='left',
+            anchor='free',
+            position=0.0
+        )
+        
         st.plotly_chart(fig, use_container_width=True)
+        
+        st.markdown("---")
         
         # Summary metrics
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            phase_count = len([x for x in hierarchical_data if x["Type"] == "Phase"])
+            phase_count = len(phases_sorted)
             st.metric("Total Phases", phase_count)
         with col2:
-            task_count = len([x for x in hierarchical_data if x["Type"] == "Task"])
+            task_count = len(gantt_df)
             st.metric("Total Tasks", task_count)
         with col3:
-            total_duration = (hierarchical_df["Finish"].max() - hierarchical_df["Start"].min()).days
+            total_duration = (gantt_df["Finish"].max() - gantt_df["Start"].min()).days
             st.metric("Total Duration", f"{total_duration} days")
         with col4:
-            unassigned = len([x for x in hierarchical_data if x["Type"] == "Task" and x.get("assignee") == "UNASSIGNED"])
+            unassigned = len(gantt_df[gantt_df["assignee"] == "UNASSIGNED"])
             st.metric("Unassigned Tasks", unassigned, delta=f"-{unassigned}" if unassigned > 0 else None)
     
     else:
@@ -1506,7 +1601,7 @@ with tabs[2]:
         
         fig.update_layout(
             height=max(600, 40*len(gantt_df)),
-            margin=dict(l=300, r=50, t=30, b=50),  # Increased left margin
+            margin=dict(l=450, r=50, t=30, b=50),  # Increased left margin for left alignment
             legend=dict(
                 orientation="h",
                 yanchor="bottom",
@@ -1639,7 +1734,8 @@ with tabs[3]:
     selected_employees = st.multiselect(
         "Select employees to view",
         options=sorted(employees),
-        default=sorted(employees)[:min(5, len(employees))]
+        default=sorted(employees)[:min(5, len(employees))],
+        key="workload_employee_select"
     )
     
     if selected_employees:
