@@ -308,6 +308,9 @@ def parse_skills_importance_cell(v, max_items: int = 3):
         if not p:
             continue
         
+        skill = None
+        imp = None
+        
         # Priority 1: Format "Skill Name (5)" - parentheses with importance
         m1 = re.match(r"^\s*(.+?)\s*\(\s*(\d+(?:\.\d+)?)\s*\)\s*$", p)
         if m1:
@@ -324,10 +327,10 @@ def parse_skills_importance_cell(v, max_items: int = 3):
         if m2:
             skill = m2.group(1).strip()
             imp = float(m2.group(2))
-            if skill:
-                out.append({"skill": skill, "skill_importance": imp})
-                if len(out) >= max_items:
-                    break
+        if skill:
+            out.append({"skill": skill, "skill_importance": imp})
+        if len(out) >= max_items:
+            break
             continue
         
         # Priority 3: Format "Skill Name 5" or "Skill Name(5)" (no space before paren)
@@ -1009,23 +1012,22 @@ for _, t in tasks_df.iterrows():
     
     best = None
     best_overall = None
+    
     for emp in candidates:
-        # STEP 1: Check skills first
+        # STEP 1: Check mandatory skills - employee MUST have ALL mandatory skills (importance >= threshold)
+        # If they have all mandatory skills, they're eligible (even if they don't have optional skills)
         if not has_mandatory_skills(emp, skills_req):
-            continue
+            continue  # Missing mandatory skills - skip
         
-        allocated_total = person_allocated_skill_total(emp, skills_req)
-        
-        # Additional check: if employee has 0% skill match (no skills at all), skip them
-        # This handles the case where all skills are optional but employee has none
-        if allocated_total <= 0 and required_total > 0:
-            continue  # Skip employees with zero skill match
-        
-        # STEP 2: Check capacity BEFORE assigning
-        # If employee doesn't have capacity, skip them and look for someone else
+        # STEP 2: Check capacity availability within the task's time frame
+        # If employee doesn't have capacity during the task period, skip them
         has_capacity, estimated_peak_util = has_capacity_for_task(emp, d0, d1, effort, max_utilization=1.0)
         if not has_capacity:
-            continue  # Skip - no capacity available
+            continue  # No capacity available during task time frame - skip
+        
+        # STEP 3: Calculate skill match (for risk calculation, not for filtering)
+        # Employee has all mandatory skills and capacity - calculate their skill match
+        allocated_total = person_allocated_skill_total(emp, skills_req)
         
         # STEP 3: Calculate risks only for employees with skills AND capacity
         gap_skill_risk = compute_skill_risk(required_total, allocated_total)
@@ -1118,6 +1120,30 @@ for _, t in tasks_df.iterrows():
     assignments.append(best)
 
 assign_df = pd.DataFrame(assignments)
+
+# Debug: Show assignment statistics in sidebar
+with st.sidebar:
+    if st.checkbox("Show Assignment Debug Info", value=False):
+        st.markdown("### Assignment Debug")
+        total_tasks = len(assign_df)
+        assigned = len(assign_df[assign_df["assignee"] != "UNASSIGNED"])
+        unassigned = total_tasks - assigned
+        
+        st.write(f"**Total Tasks:** {total_tasks}")
+        st.write(f"**Assigned:** {assigned}")
+        st.write(f"**Unassigned:** {unassigned}")
+        st.write(f"**Mandatory Threshold:** {mandatory_threshold}")
+        
+        if unassigned > 0:
+            st.write("**Sample Unassigned Tasks:**")
+            unassigned_tasks = assign_df[assign_df["assignee"] == "UNASSIGNED"][["task_id", "task_name", "missing_skills"]].head(5)
+            for _, row in unassigned_tasks.iterrows():
+                st.write(f"- Task {row['task_id']}: {row['task_name'][:40]}...")
+                st.write(f"  Missing: {row['missing_skills'][:60]}...")
+        
+        # Show employee count
+        st.write(f"**Total Employees:** {len(employees)}")
+        st.write(f"**Employees with Assignments:** {len(assign_df[assign_df['assignee'] != 'UNASSIGNED']['assignee'].unique())}")
 
 # ============================================
 # TAB 2: ALLOCATION RESULTS
@@ -1488,20 +1514,128 @@ with tabs[2]:
         
         st.markdown("---")
         
-        # Summary metrics
+        # Project Impact Analysis
+        st.markdown("### 📊 Project Impact Analysis")
+        
+        unassigned_df = gantt_df[gantt_df["assignee"] == "UNASSIGNED"]
+        assigned_df = gantt_df[gantt_df["assignee"] != "UNASSIGNED"]
+        
+        # Calculate project delay
+        max_delay = gantt_df["expected_delay_days"].max() if gantt_df["expected_delay_days"].notna().any() else 0
+        avg_delay = gantt_df["expected_delay_days"].mean() if gantt_df["expected_delay_days"].notna().any() else 0
+        
+        # Aggregate missing skills from unassigned tasks
+        all_missing_skills = {}
+        for _, row in unassigned_df.iterrows():
+            missing_str = str(row.get("missing_skills", "")).strip()
+            if missing_str:
+                # Parse comma-separated skills
+                skills = [s.strip() for s in missing_str.split(",") if s.strip()]
+                for skill in skills:
+                    all_missing_skills[skill] = all_missing_skills.get(skill, 0) + 1
+        
+        # Sort skills by frequency
+        sorted_missing_skills = sorted(all_missing_skills.items(), key=lambda x: x[1], reverse=True)
+        
+        # Create impact summary
         col1, col2, col3, col4 = st.columns(4)
+        
         with col1:
-            phase_count = len(phases_sorted)
-            st.metric("Total Phases", phase_count)
+            unassigned_count = len(unassigned_df)
+            total_tasks = len(gantt_df)
+            assignment_rate = ((total_tasks - unassigned_count) / total_tasks * 100) if total_tasks > 0 else 0
+            st.metric(
+                "Assignment Rate",
+                f"{assignment_rate:.0f}%",
+                delta=f"{unassigned_count} unassigned" if unassigned_count > 0 else None,
+                delta_color="inverse"
+            )
+        
         with col2:
-            task_count = len(gantt_df)
-            st.metric("Total Tasks", task_count)
+            if max_delay > 0:
+                st.metric(
+                    "Estimated Project Delay",
+                    f"{max_delay:.0f} days",
+                    delta=f"Max delay" if max_delay > 0 else None,
+                    delta_color="inverse"
+                )
+            else:
+                st.metric("Estimated Project Delay", "On schedule")
+        
         with col3:
-            total_duration = (gantt_df["Finish"].max() - gantt_df["Start"].min()).days
-            st.metric("Total Duration", f"{total_duration} days")
+            critical_tasks = len(unassigned_df[unassigned_df["risk_band"] == "Critical"])
+            if critical_tasks > 0:
+                st.metric(
+                    "Critical Unassigned",
+                    critical_tasks,
+                    delta="High priority" if critical_tasks > 0 else None,
+                    delta_color="inverse"
+                )
+            else:
+                st.metric("Critical Unassigned", "0")
+        
         with col4:
-            unassigned = len(gantt_df[gantt_df["assignee"] == "UNASSIGNED"])
-            st.metric("Unassigned Tasks", unassigned, delta=f"-{unassigned}" if unassigned > 0 else None)
+            unique_missing_skills_count = len(all_missing_skills)
+            st.metric(
+                "Missing Skill Types",
+                unique_missing_skills_count,
+                delta=f"{sum(all_missing_skills.values())} total gaps" if unique_missing_skills_count > 0 else None,
+                delta_color="inverse"
+            )
+        
+        # Actionable Recommendations
+        if unassigned_count > 0:
+            st.markdown("#### 🎯 Recommendations")
+            
+            rec_col1, rec_col2 = st.columns(2)
+            
+            with rec_col1:
+                st.markdown("**Resource Gaps:**")
+                if sorted_missing_skills:
+                    # Show top 5 most needed skills
+                    top_skills = sorted_missing_skills[:5]
+                    for skill, count in top_skills:
+                        st.markdown(f"• **{skill}**: Needed for {count} task{'s' if count > 1 else ''}")
+                    
+                    if len(sorted_missing_skills) > 5:
+                        st.caption(f"... and {len(sorted_missing_skills) - 5} more skill types")
+                else:
+                    st.info("No specific skill gaps identified. Tasks may be unassigned due to capacity constraints.")
+            
+            with rec_col2:
+                st.markdown("**Action Items:**")
+                if max_delay > 0:
+                    st.warning(f"⚠️ **Project at risk**: Estimated delay of up to {max_delay:.0f} days")
+                
+                if sorted_missing_skills:
+                    total_skill_gaps = sum(all_missing_skills.values())
+                    st.info(f"💡 **Hiring/Allocation needed**: {total_skill_gaps} skill gaps across {unique_missing_skills_count} skill types")
+                
+                if critical_tasks > 0:
+                    st.error(f"🚨 **Urgent**: {critical_tasks} critical task{'s' if critical_tasks > 1 else ''} unassigned")
+                
+                if unassigned_count > 0 and max_delay == 0:
+                    st.info("✅ **Capacity planning**: Tasks are unassigned but no delays estimated yet. Review capacity allocation.")
+        else:
+            st.success("✅ **All tasks assigned!** Project is on track with full resource allocation.")
+        
+        # Additional metrics
+        with st.expander("📈 Detailed Metrics"):
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                phase_count = len(phases_sorted)
+                st.metric("Total Phases", phase_count)
+            with col2:
+                total_duration = (gantt_df["Finish"].max() - gantt_df["Start"].min()).days if len(gantt_df) > 0 else 0
+                st.metric("Total Project Duration", f"{total_duration} days")
+            with col3:
+                avg_duration = gantt_df["Duration"].mean() if len(gantt_df) > 0 else 0
+                st.metric("Avg Task Duration", f"{avg_duration:.1f} days")
+            with col4:
+                if avg_delay > 0:
+                    st.metric("Average Delay", f"{avg_delay:.1f} days")
+                else:
+                    st.metric("Average Delay", "0 days")
     
     else:
         # Task-level view (no phases available)
@@ -1543,7 +1677,7 @@ with tabs[2]:
         
         fig.update_layout(
             height=max(600, 40*len(gantt_df)),
-            margin=dict(l=450, r=50, t=30, b=50),  # Increased left margin for left alignment
+            margin=dict(l=0, r=0, t=5, b=50),  # Minimal margins for left alignment
             legend=dict(
                 orientation="h",
                 yanchor="bottom",
@@ -1561,16 +1695,126 @@ with tabs[2]:
         
         st.plotly_chart(fig, use_container_width=True)
         
-        # Gantt summary
+        # Project Impact Analysis
+        st.markdown("---")
+        st.markdown("### 📊 Project Impact Analysis")
+    
+    unassigned_df = gantt_df[gantt_df["assignee"] == "UNASSIGNED"]
+    assigned_df = gantt_df[gantt_df["assignee"] != "UNASSIGNED"]
+    
+    # Calculate project delay
+    max_delay = gantt_df["expected_delay_days"].max() if gantt_df["expected_delay_days"].notna().any() else 0
+    avg_delay = gantt_df["expected_delay_days"].mean() if gantt_df["expected_delay_days"].notna().any() else 0
+    
+    # Aggregate missing skills from unassigned tasks
+    all_missing_skills = {}
+    for _, row in unassigned_df.iterrows():
+        missing_str = str(row.get("missing_skills", "")).strip()
+        if missing_str:
+            # Parse comma-separated skills
+            skills = [s.strip() for s in missing_str.split(",") if s.strip()]
+            for skill in skills:
+                all_missing_skills[skill] = all_missing_skills.get(skill, 0) + 1
+    
+    # Sort skills by frequency
+    sorted_missing_skills = sorted(all_missing_skills.items(), key=lambda x: x[1], reverse=True)
+    
+    # Create impact summary
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        unassigned_count = len(unassigned_df)
+        total_tasks = len(gantt_df)
+        assignment_rate = ((total_tasks - unassigned_count) / total_tasks * 100) if total_tasks > 0 else 0
+        st.metric(
+            "Assignment Rate",
+            f"{assignment_rate:.0f}%",
+            delta=f"{unassigned_count} unassigned" if unassigned_count > 0 else None,
+            delta_color="inverse"
+        )
+    
+    with col2:
+        if max_delay > 0:
+            st.metric(
+                "Estimated Project Delay",
+                f"{max_delay:.0f} days",
+                delta=f"Max delay" if max_delay > 0 else None,
+                delta_color="inverse"
+            )
+        else:
+            st.metric("Estimated Project Delay", "On schedule")
+    
+    with col3:
+        critical_tasks = len(unassigned_df[unassigned_df["risk_band"] == "Critical"])
+        if critical_tasks > 0:
+            st.metric(
+                "Critical Unassigned",
+                critical_tasks,
+                delta="High priority" if critical_tasks > 0 else None,
+                delta_color="inverse"
+            )
+        else:
+            st.metric("Critical Unassigned", "0")
+    
+    with col4:
+        unique_missing_skills_count = len(all_missing_skills)
+        st.metric(
+            "Missing Skill Types",
+            unique_missing_skills_count,
+            delta=f"{sum(all_missing_skills.values())} total gaps" if unique_missing_skills_count > 0 else None,
+            delta_color="inverse"
+        )
+    
+    # Actionable Recommendations
+    if unassigned_count > 0:
+        st.markdown("#### 🎯 Recommendations")
+        
+        rec_col1, rec_col2 = st.columns(2)
+        
+        with rec_col1:
+            st.markdown("**Resource Gaps:**")
+            if sorted_missing_skills:
+                # Show top 5 most needed skills
+                top_skills = sorted_missing_skills[:5]
+                for skill, count in top_skills:
+                    st.markdown(f"• **{skill}**: Needed for {count} task{'s' if count > 1 else ''}")
+                
+                if len(sorted_missing_skills) > 5:
+                    st.caption(f"... and {len(sorted_missing_skills) - 5} more skill types")
+            else:
+                st.info("No specific skill gaps identified. Tasks may be unassigned due to capacity constraints.")
+        
+        with rec_col2:
+            st.markdown("**Action Items:**")
+            if max_delay > 0:
+                st.warning(f"⚠️ **Project at risk**: Estimated delay of up to {max_delay:.0f} days")
+            
+            if sorted_missing_skills:
+                total_skill_gaps = sum(all_missing_skills.values())
+                st.info(f"💡 **Hiring/Allocation needed**: {total_skill_gaps} skill gaps across {unique_missing_skills_count} skill types")
+            
+            if critical_tasks > 0:
+                st.error(f"🚨 **Urgent**: {critical_tasks} critical task{'s' if critical_tasks > 1 else ''} unassigned")
+            
+            if unassigned_count > 0 and max_delay == 0:
+                st.info("✅ **Capacity planning**: Tasks are unassigned but no delays estimated yet. Review capacity allocation.")
+    else:
+        st.success("✅ **All tasks assigned!** Project is on track with full resource allocation.")
+    
+    # Additional metrics
+    with st.expander("📈 Detailed Metrics"):
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Total Duration", f"{(gantt_df['Finish'].max() - gantt_df['Start'].min()).days} days")
+            total_duration = (gantt_df['Finish'].max() - gantt_df['Start'].min()).days if len(gantt_df) > 0 else 0
+            st.metric("Total Project Duration", f"{total_duration} days")
         with col2:
-            avg_duration = gantt_df["Duration"].mean()
+            avg_duration = gantt_df["Duration"].mean() if len(gantt_df) > 0 else 0
             st.metric("Avg Task Duration", f"{avg_duration:.1f} days")
         with col3:
-            max_delay = gantt_df["expected_delay_days"].max() if gantt_df["expected_delay_days"].notna().any() else 0
-            st.metric("Max Delay", f"{max_delay} days")
+            if avg_delay > 0:
+                st.metric("Average Delay", f"{avg_delay:.1f} days")
+            else:
+                st.metric("Average Delay", "0 days")
 
 # ============================================
 # TAB 4: WORKLOAD ANALYSIS
