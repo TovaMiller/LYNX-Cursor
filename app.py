@@ -1584,6 +1584,7 @@ with tabs[2]:
     urgent_window_days = 98  # 14 weeks
     allocation_time_days = 7  # Time to allocate/reassign existing employee
     hiring_time_days = 40  # Time to hire new employee
+    immediate_window_days = 14  # Tasks due within 14 days can only be saved by allocation
     
     # Helper function to check if skills can be allocated (someone has them)
     def can_allocate_skills(required_skills_str: str) -> bool:
@@ -1659,16 +1660,30 @@ with tabs[2]:
             # Urgent: due within 14 weeks
             urgent_tasks.append({**task.to_dict(), "action_type": action_type, "resolution_time": resolution_time, "days_until_due": days_until_due})
             
-            # Calculate if task will be delayed
-            if days_until_due < resolution_time:
-                # Will be delayed even if we act now
-                delay = resolution_time - days_until_due
-                projected_delay_days = max(projected_delay_days, delay)
-                will_be_delayed_tasks.append({**task.to_dict(), "action_type": action_type, "resolution_time": resolution_time, "delay": delay})
+            # For tasks due very soon, only allocation can save them (hiring takes too long)
+            if days_until_due <= immediate_window_days:
+                # Can only be saved by allocation (hiring takes 40 days, too long)
+                if action_type == "allocate" and days_until_due >= allocation_time_days:
+                    # Can be saved by allocation
+                    days_to_act = days_until_due - allocation_time_days
+                    recoverable_tasks.append({**task.to_dict(), "action_type": "allocate", "resolution_time": allocation_time_days, "days_to_act": days_to_act, "can_save": True})
+                else:
+                    # Will be delayed (hiring needed but takes too long, or allocation also too late)
+                    delay = resolution_time - days_until_due if days_until_due < resolution_time else 0
+                    if delay > 0:
+                        projected_delay_days = max(projected_delay_days, delay)
+                        will_be_delayed_tasks.append({**task.to_dict(), "action_type": action_type, "resolution_time": resolution_time, "delay": delay})
             else:
-                # Can be saved if we act fast
-                days_to_act = days_until_due - resolution_time
-                recoverable_tasks.append({**task.to_dict(), "action_type": action_type, "resolution_time": resolution_time, "days_to_act": days_to_act})
+                # Tasks due later - can use either allocation or hiring
+                if days_until_due < resolution_time:
+                    # Will be delayed even if we act now
+                    delay = resolution_time - days_until_due
+                    projected_delay_days = max(projected_delay_days, delay)
+                    will_be_delayed_tasks.append({**task.to_dict(), "action_type": action_type, "resolution_time": resolution_time, "delay": delay})
+                else:
+                    # Can be saved if we act fast
+                    days_to_act = days_until_due - resolution_time
+                    recoverable_tasks.append({**task.to_dict(), "action_type": action_type, "resolution_time": resolution_time, "days_to_act": days_to_act, "can_save": True})
         elif days_until_due <= urgent_window_days * 2:
             # Near-term: 14-28 weeks
             near_term_tasks.append({**task.to_dict(), "action_type": action_type, "resolution_time": resolution_time, "days_until_due": days_until_due})
@@ -1787,13 +1802,34 @@ with tabs[2]:
                 else:
                     st.warning(f"⚠️ **Urgent action needed**: {total_urgent} tasks due within 14 weeks are unassigned.")
             
-            # Recovery recommendations
+            # Recovery recommendations - break down by action type and urgency
             if total_recoverable > 0:
-                min_days_to_act = min([t.get("days_to_act", 0) for t in recoverable_tasks], default=0)
-                if allocation_needed > 0:
-                    st.info(f"💡 **Allocate within {min_days_to_act:.0f} days**: Can save {allocation_needed} tasks by reallocating existing employees.")
-                if hiring_needed > 0:
-                    st.info(f"💡 **Hire within {min_days_to_act:.0f} days**: Can save {hiring_needed} tasks by hiring new employees.")
+                # Separate recoverable tasks by action type
+                recoverable_by_allocation = [t for t in recoverable_tasks if t.get("action_type") == "allocate"]
+                recoverable_by_hiring = [t for t in recoverable_tasks if t.get("action_type") == "hire"]
+                
+                # Tasks that can be saved by allocation (immediate/urgent)
+                if recoverable_by_allocation:
+                    allocation_save_count = len(recoverable_by_allocation)
+                    min_days_allocation = min([t.get("days_to_act", 0) for t in recoverable_by_allocation], default=0)
+                    # Check how many are due very soon (need immediate allocation)
+                    immediate_allocation = [t for t in recoverable_by_allocation if t.get("days_until_due", 999) <= immediate_window_days]
+                    if immediate_allocation:
+                        immediate_count = len(immediate_allocation)
+                        st.warning(f"⚡ **Allocate within {min_days_allocation:.0f} days**: {immediate_count} task{'s' if immediate_count > 1 else ''} due within 14 days can be saved by reallocating existing employees.")
+                    if allocation_save_count > len(immediate_allocation):
+                        remaining = allocation_save_count - len(immediate_allocation)
+                        st.info(f"💡 **Allocate within {min_days_allocation:.0f} days**: {remaining} additional task{'s' if remaining > 1 else ''} can be saved by reallocating.")
+                
+                # Tasks that can be saved by hiring (longer term)
+                if recoverable_by_hiring:
+                    hiring_save_count = len(recoverable_by_hiring)
+                    min_days_hiring = min([t.get("days_to_act", 0) for t in recoverable_by_hiring], default=0)
+                    # Only show hiring recommendation if there's enough time
+                    if min_days_hiring >= hiring_time_days - 10:  # At least 30 days to act
+                        st.info(f"💡 **Hire within {min_days_hiring:.0f} days**: {hiring_save_count} task{'s' if hiring_save_count > 1 else ''} due later can be saved by hiring new employees.")
+                    else:
+                        st.warning(f"⚠️ **Hiring needed but may be too late**: {hiring_save_count} task{'s' if hiring_save_count > 1 else ''} require hiring, but only {min_days_hiring:.0f} days available.")
             
             # Skill gaps summary
             if sorted_missing_skills:
