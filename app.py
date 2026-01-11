@@ -1349,36 +1349,6 @@ with tabs[2]:
         if "expanded_phases" not in st.session_state:
             st.session_state.expanded_phases = set()  # All collapsed by default
         
-        # Phase expand/collapse controls
-        col1, col2, col3 = st.columns([2, 1, 1])
-        with col1:
-            st.caption("Click the buttons below to expand/collapse each phase")
-        with col2:
-            if st.button("Expand All", key="expand_all"):
-                st.session_state.expanded_phases = set(phases_sorted)
-                st.rerun()
-        with col3:
-            if st.button("Collapse All", key="collapse_all"):
-                st.session_state.expanded_phases = set()
-                st.rerun()
-        
-        # Clickable phase toggle buttons (aligned with chart phases)
-        st.markdown("**Click to toggle phases:**")
-        phase_button_cols = st.columns(min(5, len(phases_sorted)))
-        for idx, phase in enumerate(phases_sorted):
-            col_idx = idx % 5
-            with phase_button_cols[col_idx]:
-                is_expanded = phase in st.session_state.expanded_phases
-                button_text = f"➖ {phase}" if is_expanded else f"➕ {phase}"
-                if st.button(button_text, key=f"phase_toggle_{phase}", use_container_width=True):
-                    if is_expanded:
-                        st.session_state.expanded_phases.discard(phase)
-                    else:
-                        st.session_state.expanded_phases.add(phase)
-                    st.rerun()
-        
-        st.markdown("---")
-        
         # Build hierarchical data for unified Gantt chart
         hierarchical_data = []
         
@@ -1450,99 +1420,71 @@ with tabs[2]:
         
         hierarchical_df = pd.DataFrame(hierarchical_data)
         
-        # Create unified hierarchical Gantt chart
-        fig = px.timeline(
-            hierarchical_df,
-            x_start="Start",
-            x_end="Finish",
-            y="Name",
-            color="Risk Band",
-            color_discrete_map=color_map,
-            hover_data={
-                "Type": True,
-                "Phase": True,
-                "Duration": True,
-                "Task Count": True,
-                "Assigned": True,
-                "Avg Risk": ":.1f",
-                "assignee": True,
-                "skill_risk": ":.0f",
-                "schedule_risk": ":.0f",
-                "expected_delay_days": True,
-                "Start": False,
-                "Finish": False,
-            },
-            labels={"Risk Band": "Risk Level"},
-        )
+        # Calculate timeline range
+        all_dates = []
+        for _, row in hierarchical_df.iterrows():
+            all_dates.extend([row["Start"], row["Finish"]])
+        min_date = min(all_dates)
+        max_date = max(all_dates)
+        date_range = (max_date - min_date).days
         
-        # Enhanced styling for hierarchical view with left-aligned text
-        # Create custom tick labels with different font sizes for phases vs tasks
-        tick_labels = []
+        # Create custom Gantt chart with full control using Streamlit components
+        st.markdown("### Gantt Chart")
+        
+        # Timeline header
+        timeline_cols = st.columns([2, 8])  # Phase names column, timeline column
+        with timeline_cols[1]:
+            # Create date labels for timeline
+            date_labels = []
+            num_labels = 10
+            for i in range(num_labels + 1):
+                date_val = min_date + timedelta(days=int(date_range * i / num_labels))
+                date_labels.append(date_val.strftime("%b %d"))
+            st.markdown(f"<div style='display: flex; justify-content: space-between; padding: 5px;'>{' | '.join(date_labels)}</div>", unsafe_allow_html=True)
+        
+        # Create Gantt rows
         for idx, row in hierarchical_df.iterrows():
-            if row["Type"] == "Phase":
-                # Bold and larger for phases
-                tick_labels.append(row["Name"])
-            else:
-                # Regular for tasks
-                tick_labels.append(row["Name"])
+            row_cols = st.columns([2, 8])
+            
+            with row_cols[0]:
+                if row["Type"] == "Phase":
+                    # Clickable phase button
+                    is_expanded = row["IsExpanded"]
+                    icon = "➖" if is_expanded else "➕"
+                    phase_name = str(row["Phase"])
+                    button_text = f"{icon} {phase_name} ({row['Task Count']} tasks)"
+                    
+                    if st.button(button_text, key=f"phase_click_{phase_name}_{idx}", use_container_width=True):
+                        if is_expanded:
+                            st.session_state.expanded_phases.discard(phase_name)
+                        else:
+                            st.session_state.expanded_phases.add(phase_name)
+                        st.rerun()
+                else:
+                    # Task name (not clickable)
+                    st.markdown(f"<div style='padding-left: 20px;'>{row['Name']}</div>", unsafe_allow_html=True)
+            
+            with row_cols[1]:
+                # Draw timeline bar
+                start_offset = (row["Start"] - min_date).days / date_range * 100
+                bar_width = (row["Finish"] - row["Start"]).days / date_range * 100
+                risk_color = color_map.get(row["Risk Band"], "#DC2626")
+                
+                bar_html = f"""
+                <div style='position: relative; height: 30px; background: #f0f0f0; border: 1px solid #ddd;'>
+                    <div style='position: absolute; left: {start_offset}%; width: {bar_width}%; height: 100%; background: {risk_color}; border-radius: 3px;'></div>
+                </div>
+                """
+                st.markdown(bar_html, unsafe_allow_html=True)
         
-        fig.update_yaxes(
-            autorange="reversed",
-            title=None,  # Remove "undefined" label completely
-            tickfont=dict(size=13, family="Inter, sans-serif"),
-            showgrid=True,
-            gridcolor="rgba(0,0,0,0.05)",
-            tickmode='array',
-            tickvals=list(range(len(hierarchical_df))),
-            ticktext=tick_labels,
-            side='left',
-            tickangle=0  # Horizontal text for better readability
-        )
-        
-        # Update font for phase rows specifically using annotations or custom styling
-        # Note: Plotly doesn't support per-tick font styling, so we'll make all phase text bold in the data
-        
-        fig.update_xaxes(
-            title="Timeline",
-            tickfont=dict(size=10, family="Inter, sans-serif"),
-            showgrid=True,
-            gridcolor="rgba(0,0,0,0.05)"
-        )
-        
-        # Calculate height based on number of visible items
-        num_items = len(hierarchical_df)
-        row_height = 40  # Increased height for better visibility
-        min_height = 500
-        max_height = 2000
-        
-        fig.update_layout(
-            height=min(max(min_height, num_items * row_height), max_height),
-            margin=dict(l=450, r=50, t=30, b=50),  # Increased left margin for better left alignment
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="right",
-                x=1,
-                font=dict(size=11)
-            ),
-            hovermode="closest",
-            plot_bgcolor='#FAFAFA',
-            paper_bgcolor='white',
-            font=dict(family="Inter, sans-serif", size=11),
-            title_font=dict(size=14, family="Inter, sans-serif"),
-            showlegend=True
-        )
-        
-        # Ensure y-axis labels are left-aligned
-        fig.update_yaxes(
-            tickangle=0,  # Horizontal text
-            side='left',
-            anchor='free',
-            position=0.0
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
+        # Add legend
+        st.markdown("---")
+        legend_cols = st.columns(4)
+        with legend_cols[0]:
+            st.markdown("**Risk Level:**")
+        for risk, color in color_map.items():
+            with legend_cols[1]:
+                st.markdown(f"<span style='color: {color};'>■</span> {risk}", unsafe_allow_html=True)
         
         st.markdown("---")
         
