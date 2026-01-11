@@ -1446,27 +1446,57 @@ with tabs[2]:
         
         hierarchical_df = pd.DataFrame(hierarchical_data)
         
-        # Calculate timeline range
+        # Calculate timeline range - ensure we get the full range
         all_dates = []
         for _, row in hierarchical_df.iterrows():
-            all_dates.extend([row["Start"], row["Finish"]])
-        min_date = min(all_dates)
-        max_date = max(all_dates)
+            if pd.notna(row["Start"]) and pd.notna(row["Finish"]):
+                all_dates.extend([row["Start"], row["Finish"]])
+        
+        if not all_dates:
+            min_date = date.today()
+            max_date = date.today() + timedelta(days=90)
+        else:
+            min_date = min(all_dates)
+            max_date = max(all_dates)
+        
+        # Add padding to show full range
+        date_padding = timedelta(days=7)
+        min_date = min_date - date_padding
+        max_date = max_date + date_padding
         date_range = (max_date - min_date).days
         
         # Create custom Gantt chart with full control using Streamlit components
         st.markdown("### Gantt Chart")
         
-        # Timeline header
+        # Timeline header with properly positioned date labels
         timeline_cols = st.columns([2, 8])  # Phase names column, timeline column
         with timeline_cols[1]:
-            # Create date labels for timeline
-            date_labels = []
-            num_labels = 10
-            for i in range(num_labels + 1):
-                date_val = min_date + timedelta(days=int(date_range * i / num_labels))
-                date_labels.append(date_val.strftime("%b %d"))
-            st.markdown(f"<div style='display: flex; justify-content: space-between; padding: 5px;'>{' | '.join(date_labels)}</div>", unsafe_allow_html=True)
+            # Create date labels for timeline (monthly) with actual positions
+            date_labels_html = []
+            # Generate monthly labels with their actual positions
+            current_date = min_date.replace(day=1)  # Start from first day of month
+            while current_date <= max_date:
+                # Calculate position percentage for this date
+                if date_range > 0:
+                    position_pct = max(0, min(100, (current_date - min_date).days / date_range * 100))
+                else:
+                    position_pct = 0
+                date_label = current_date.strftime("%b %Y")
+                date_labels_html.append(f"<span style='position: absolute; left: {position_pct}%; transform: translateX(-50%); white-space: nowrap;'>{date_label}</span>")
+                # Move to next month
+                if current_date.month == 12:
+                    current_date = current_date.replace(year=current_date.year + 1, month=1)
+                else:
+                    current_date = current_date.replace(month=current_date.month + 1)
+            # Also add the max_date if it's not already included
+            if max_date.strftime("%b %Y") not in [d.split(">")[1].split("<")[0] for d in date_labels_html]:
+                if date_range > 0:
+                    position_pct = max(0, min(100, (max_date - min_date).days / date_range * 100))
+                else:
+                    position_pct = 100
+                date_label = max_date.strftime("%b %Y")
+                date_labels_html.append(f"<span style='position: absolute; left: {position_pct}%; transform: translateX(-50%); white-space: nowrap;'>{date_label}</span>")
+            st.markdown(f"<div style='position: relative; height: 30px; padding: 5px; border-bottom: 1px solid #ddd;'>{''.join(date_labels_html)}</div>", unsafe_allow_html=True)
         
         # Create Gantt rows
         for idx, row in hierarchical_df.iterrows():
@@ -1491,28 +1521,32 @@ with tabs[2]:
                     st.markdown(f"<div style='padding-left: 20px;'>{row['Name']}</div>", unsafe_allow_html=True)
             
             with row_cols[1]:
-                # Draw timeline bar
-                start_offset = (row["Start"] - min_date).days / date_range * 100
-                bar_width = (row["Finish"] - row["Start"]).days / date_range * 100
+                # Draw timeline bar - ensure full range is used
+                if date_range > 0:
+                    start_offset = max(0, (row["Start"] - min_date).days / date_range * 100)
+                    bar_width = max(1, (row["Finish"] - row["Start"]).days / date_range * 100)
+                else:
+                    start_offset = 0
+                    bar_width = 100
                 risk_color = color_map.get(row["Risk Band"], "#DC2626")
                 
+                # Format dates for tooltip
+                start_date_str = row["Start"].strftime("%Y-%m-%d") if pd.notna(row["Start"]) else "N/A"
+                finish_date_str = row["Finish"].strftime("%Y-%m-%d") if pd.notna(row["Finish"]) else "N/A"
+                assignee_str = str(row.get("assignee", "N/A")) if row.get("assignee") and str(row.get("assignee")) != "nan" else "Unassigned"
+                
+                # Create tooltip text
+                tooltip_text = f"Start: {start_date_str}\\nEnd: {finish_date_str}\\nAssigned to: {assignee_str}"
+                
                 bar_html = f"""
-                <div style='position: relative; height: 30px; background: #f0f0f0; border: 1px solid #ddd;'>
-                    <div style='position: absolute; left: {start_offset}%; width: {bar_width}%; height: 100%; background: {risk_color}; border-radius: 3px;'></div>
+                <div style='position: relative; height: 30px; background: #f0f0f0; border: 1px solid #ddd; width: 100%;'>
+                    <div style='position: absolute; left: {start_offset}%; width: {bar_width}%; height: 100%; background: {risk_color}; border-radius: 3px;' title='{tooltip_text}'></div>
                 </div>
                 """
                 st.markdown(bar_html, unsafe_allow_html=True)
         
-        # Add legend
-        st.markdown("---")
-        legend_cols = st.columns(4)
-        with legend_cols[0]:
-            st.markdown("**Risk Level:**")
-        for risk, color in color_map.items():
-            with legend_cols[1]:
-                st.markdown(f"<span style='color: {color};'>■</span> {risk}", unsafe_allow_html=True)
-        
-        st.markdown("---")
+        # Add legend at the bottom in one row
+        st.markdown("<div style='text-align: center; padding: 10px; background: #f9fafb; border-top: 1px solid #e5e7eb;'><strong>Risk Level:</strong> " + " | ".join([f"<span style='color: {color};'>■</span> {risk}" for risk, color in color_map.items()]) + "</div>", unsafe_allow_html=True)
     
     else:
         # Task-level view (no phases available)
@@ -1528,12 +1562,12 @@ with tabs[2]:
             color_discrete_map=color_map,
             hover_data={
                 "Assignee": True,
+                "Start": True,
+                "Finish": True,
                 "skill_risk": ":.0f",
                 "schedule_risk": ":.0f",
                 "expected_delay_days": True,
                 "Duration": True,
-                "Start": False,
-                "Finish": False,
             },
             labels={"risk_band": "Risk Level"}
         )
@@ -1545,22 +1579,38 @@ with tabs[2]:
             showgrid=True,
             gridcolor="rgba(0,0,0,0.05)"
         )
+        # Calculate full date range for x-axis with padding
+        min_start = gantt_df["Start"].min()
+        max_finish = gantt_df["Finish"].max()
+        # Add padding to ensure all bars are visible (10% padding on each side)
+        date_range_days = (max_finish - min_start).days
+        padding_days = max(7, int(date_range_days * 0.1))  # At least 7 days, or 10% of range
+        date_padding = timedelta(days=padding_days)
+        xaxis_min = min_start - date_padding
+        xaxis_max = max_finish + date_padding
+        
         fig.update_xaxes(
             title="Timeline",
             tickfont=dict(size=10, family="Inter, sans-serif"),
             showgrid=True,
-            gridcolor="rgba(0,0,0,0.05)"
+            gridcolor="rgba(0,0,0,0.05)",
+            tickformat="%b %Y",  # Format as "Month Year" (e.g., "Dec 2024")
+            dtick="M1",  # Show one tick per month
+            range=[xaxis_min, xaxis_max]  # Expand to full date range with padding (datetime objects)
         )
         
         fig.update_layout(
             height=max(600, 40*len(gantt_df)),
             margin=dict(l=0, r=0, t=5, b=50),  # Minimal margins for left alignment
+            xaxis=dict(
+                range=[xaxis_min, xaxis_max]  # Also set in layout to ensure it's applied (datetime objects)
+            ),
             legend=dict(
                 orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="right",
-                x=1,
+                yanchor="top",
+                y=-0.15,
+                xanchor="center",
+                x=0.5,
                 font=dict(size=11)
             ),
             hovermode="closest",
