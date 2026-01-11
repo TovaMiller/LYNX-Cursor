@@ -1612,6 +1612,8 @@ with tabs[2]:
         
         # Add legend at the bottom in one row
         st.markdown("<div style='text-align: center; padding: 10px; background: #f9fafb; border-top: 1px solid #e5e7eb;'><strong>Risk Level:</strong> " + " | ".join([f"<span style='color: {color};'>■</span> {risk}" for risk, color in color_map.items()]) + "</div>", unsafe_allow_html=True)
+        # Add spacing after legend
+        st.markdown("<br>", unsafe_allow_html=True)
     
     else:
         # Task-level view (no phases available)
@@ -1686,10 +1688,13 @@ with tabs[2]:
         )
         
         st.plotly_chart(fig, use_container_width=True)
-        
-        # Project Impact Analysis
-        st.markdown("---")
-        st.markdown("### 📊 Project Impact Analysis")
+    
+    # Add spacing before Project Impact Analysis
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    
+    # Project Impact Analysis
+    st.markdown("---")
+    st.markdown("## 📊 Project Impact Analysis")
     
     unassigned_df = gantt_df[gantt_df["assignee"] == "UNASSIGNED"].copy()
     assigned_df = gantt_df[gantt_df["assignee"] != "UNASSIGNED"]
