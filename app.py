@@ -212,6 +212,48 @@ st.markdown("""
     h1::before, h2::before, h3::before {
         content: none;
     }
+    
+    /* Gantt bar tooltip styles */
+    .gantt-bar-tooltip {
+        position: relative;
+    }
+    
+    .gantt-bar-tooltip .tooltiptext {
+        visibility: hidden;
+        background-color: #1A1D29;
+        color: #fff;
+        text-align: left;
+        border-radius: 4px;
+        padding: 8px 12px;
+        position: absolute;
+        z-index: 1000;
+        bottom: 125%;
+        left: 50%;
+        transform: translateX(-50%);
+        white-space: nowrap;
+        font-size: 12px;
+        font-weight: 400;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        opacity: 0;
+        transition: opacity 0.3s;
+        pointer-events: none;
+    }
+    
+    .gantt-bar-tooltip .tooltiptext::after {
+        content: "";
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        margin-left: -5px;
+        border-width: 5px;
+        border-style: solid;
+        border-color: #1A1D29 transparent transparent transparent;
+    }
+    
+    .gantt-bar-tooltip:hover .tooltiptext {
+        visibility: visible;
+        opacity: 1;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1468,11 +1510,11 @@ with tabs[2]:
         # Create custom Gantt chart with full control using Streamlit components
         st.markdown("### Gantt Chart")
         
-        # Timeline header with properly positioned date labels
+        # Timeline header with properly positioned date labels (avoiding overlap)
         timeline_cols = st.columns([2, 8])  # Phase names column, timeline column
         with timeline_cols[1]:
-            # Create date labels for timeline (monthly) with actual positions
-            date_labels_html = []
+            # Create date labels for timeline (monthly) with actual positions, avoiding overlap
+            date_labels_data = []
             # Generate monthly labels with their actual positions
             current_date = min_date.replace(day=1)  # Start from first day of month
             while current_date <= max_date:
@@ -1482,21 +1524,42 @@ with tabs[2]:
                 else:
                     position_pct = 0
                 date_label = current_date.strftime("%b %Y")
-                date_labels_html.append(f"<span style='position: absolute; left: {position_pct}%; transform: translateX(-50%); white-space: nowrap;'>{date_label}</span>")
+                date_labels_data.append({"label": date_label, "position": position_pct})
                 # Move to next month
                 if current_date.month == 12:
                     current_date = current_date.replace(year=current_date.year + 1, month=1)
                 else:
                     current_date = current_date.replace(month=current_date.month + 1)
             # Also add the max_date if it's not already included
-            if max_date.strftime("%b %Y") not in [d.split(">")[1].split("<")[0] for d in date_labels_html]:
+            max_date_label = max_date.strftime("%b %Y")
+            if not any(d["label"] == max_date_label for d in date_labels_data):
                 if date_range > 0:
                     position_pct = max(0, min(100, (max_date - min_date).days / date_range * 100))
                 else:
                     position_pct = 100
-                date_label = max_date.strftime("%b %Y")
-                date_labels_html.append(f"<span style='position: absolute; left: {position_pct}%; transform: translateX(-50%); white-space: nowrap;'>{date_label}</span>")
-            st.markdown(f"<div style='position: relative; height: 30px; padding: 5px; border-bottom: 1px solid #ddd;'>{''.join(date_labels_html)}</div>", unsafe_allow_html=True)
+                date_labels_data.append({"label": max_date_label, "position": position_pct})
+            
+            # Filter out overlapping labels (minimum 8% spacing between labels)
+            filtered_labels = []
+            min_spacing = 8  # Minimum percentage spacing between labels
+            for label_data in date_labels_data:
+                if not filtered_labels:
+                    filtered_labels.append(label_data)
+                else:
+                    # Check if this label is far enough from the last one
+                    last_position = filtered_labels[-1]["position"]
+                    if label_data["position"] - last_position >= min_spacing:
+                        filtered_labels.append(label_data)
+                    # If it's the last label (max_date), always include it
+                    elif label_data == date_labels_data[-1]:
+                        filtered_labels.append(label_data)
+            
+            # Generate HTML for filtered labels
+            date_labels_html = []
+            for label_data in filtered_labels:
+                date_labels_html.append(f"<span style='position: absolute; left: {label_data['position']}%; transform: translateX(-50%); white-space: nowrap; font-size: 11px;'>{label_data['label']}</span>")
+            
+            st.markdown(f"<div style='position: relative; height: 35px; padding: 5px; border-bottom: 1px solid #ddd;'>{''.join(date_labels_html)}</div>", unsafe_allow_html=True)
         
         # Create Gantt rows
         for idx, row in hierarchical_df.iterrows():
@@ -1535,12 +1598,14 @@ with tabs[2]:
                 finish_date_str = row["Finish"].strftime("%Y-%m-%d") if pd.notna(row["Finish"]) else "N/A"
                 assignee_str = str(row.get("assignee", "N/A")) if row.get("assignee") and str(row.get("assignee")) != "nan" else "Unassigned"
                 
-                # Create tooltip text
-                tooltip_text = f"Start: {start_date_str}\\nEnd: {finish_date_str}\\nAssigned to: {assignee_str}"
+                # Create tooltip text with proper format
+                tooltip_text = f"Start date: {start_date_str}<br>Due Date: {finish_date_str}<br>Assignee: {assignee_str}"
                 
                 bar_html = f"""
                 <div style='position: relative; height: 30px; background: #f0f0f0; border: 1px solid #ddd; width: 100%;'>
-                    <div style='position: absolute; left: {start_offset}%; width: {bar_width}%; height: 100%; background: {risk_color}; border-radius: 3px;' title='{tooltip_text}'></div>
+                    <div class="gantt-bar-tooltip" style='position: absolute; left: {start_offset}%; width: {bar_width}%; height: 100%; background: {risk_color}; border-radius: 3px; cursor: pointer;'>
+                        <span class="tooltiptext">{tooltip_text}</span>
+                    </div>
                 </div>
                 """
                 st.markdown(bar_html, unsafe_allow_html=True)
