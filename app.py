@@ -454,7 +454,7 @@ with st.sidebar.expander("Assignment Rules", expanded=True):
         "Mandatory Skill Threshold",
         min_value=1,
         max_value=5,
-        value=3,
+        value=5,
         help="Skills with importance >= this threshold are mandatory. Employees must have ALL mandatory skills to be assigned."
     )
     team_first = st.checkbox(
