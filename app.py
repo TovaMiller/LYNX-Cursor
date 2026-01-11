@@ -1513,129 +1513,6 @@ with tabs[2]:
                 st.markdown(f"<span style='color: {color};'>■</span> {risk}", unsafe_allow_html=True)
         
         st.markdown("---")
-        
-        # Project Impact Analysis
-        st.markdown("### 📊 Project Impact Analysis")
-        
-        unassigned_df = gantt_df[gantt_df["assignee"] == "UNASSIGNED"]
-        assigned_df = gantt_df[gantt_df["assignee"] != "UNASSIGNED"]
-        
-        # Calculate project delay
-        max_delay = gantt_df["expected_delay_days"].max() if gantt_df["expected_delay_days"].notna().any() else 0
-        avg_delay = gantt_df["expected_delay_days"].mean() if gantt_df["expected_delay_days"].notna().any() else 0
-        
-        # Aggregate missing skills from unassigned tasks
-        all_missing_skills = {}
-        for _, row in unassigned_df.iterrows():
-            missing_str = str(row.get("missing_skills", "")).strip()
-            if missing_str:
-                # Parse comma-separated skills
-                skills = [s.strip() for s in missing_str.split(",") if s.strip()]
-                for skill in skills:
-                    all_missing_skills[skill] = all_missing_skills.get(skill, 0) + 1
-        
-        # Sort skills by frequency
-        sorted_missing_skills = sorted(all_missing_skills.items(), key=lambda x: x[1], reverse=True)
-        
-        # Create impact summary
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            unassigned_count = len(unassigned_df)
-            total_tasks = len(gantt_df)
-            assignment_rate = ((total_tasks - unassigned_count) / total_tasks * 100) if total_tasks > 0 else 0
-            st.metric(
-                "Assignment Rate",
-                f"{assignment_rate:.0f}%",
-                delta=f"{unassigned_count} unassigned" if unassigned_count > 0 else None,
-                delta_color="inverse"
-            )
-        
-        with col2:
-            if max_delay > 0:
-                st.metric(
-                    "Estimated Project Delay",
-                    f"{max_delay:.0f} days",
-                    delta=f"Max delay" if max_delay > 0 else None,
-                    delta_color="inverse"
-                )
-            else:
-                st.metric("Estimated Project Delay", "On schedule")
-        
-        with col3:
-            critical_tasks = len(unassigned_df[unassigned_df["risk_band"] == "Critical"])
-            if critical_tasks > 0:
-                st.metric(
-                    "Critical Unassigned",
-                    critical_tasks,
-                    delta="High priority" if critical_tasks > 0 else None,
-                    delta_color="inverse"
-                )
-            else:
-                st.metric("Critical Unassigned", "0")
-        
-        with col4:
-            unique_missing_skills_count = len(all_missing_skills)
-            st.metric(
-                "Missing Skill Types",
-                unique_missing_skills_count,
-                delta=f"{sum(all_missing_skills.values())} total gaps" if unique_missing_skills_count > 0 else None,
-                delta_color="inverse"
-            )
-        
-        # Actionable Recommendations
-        if unassigned_count > 0:
-            st.markdown("#### 🎯 Recommendations")
-            
-            rec_col1, rec_col2 = st.columns(2)
-            
-            with rec_col1:
-                st.markdown("**Resource Gaps:**")
-                if sorted_missing_skills:
-                    # Show top 5 most needed skills
-                    top_skills = sorted_missing_skills[:5]
-                    for skill, count in top_skills:
-                        st.markdown(f"• **{skill}**: Needed for {count} task{'s' if count > 1 else ''}")
-                    
-                    if len(sorted_missing_skills) > 5:
-                        st.caption(f"... and {len(sorted_missing_skills) - 5} more skill types")
-                else:
-                    st.info("No specific skill gaps identified. Tasks may be unassigned due to capacity constraints.")
-            
-            with rec_col2:
-                st.markdown("**Action Items:**")
-                if max_delay > 0:
-                    st.warning(f"⚠️ **Project at risk**: Estimated delay of up to {max_delay:.0f} days")
-                
-                if sorted_missing_skills:
-                    total_skill_gaps = sum(all_missing_skills.values())
-                    st.info(f"💡 **Hiring/Allocation needed**: {total_skill_gaps} skill gaps across {unique_missing_skills_count} skill types")
-                
-                if critical_tasks > 0:
-                    st.error(f"🚨 **Urgent**: {critical_tasks} critical task{'s' if critical_tasks > 1 else ''} unassigned")
-                
-                if unassigned_count > 0 and max_delay == 0:
-                    st.info("✅ **Capacity planning**: Tasks are unassigned but no delays estimated yet. Review capacity allocation.")
-        else:
-            st.success("✅ **All tasks assigned!** Project is on track with full resource allocation.")
-        
-        # Additional metrics
-        with st.expander("📈 Detailed Metrics"):
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                phase_count = len(phases_sorted)
-                st.metric("Total Phases", phase_count)
-            with col2:
-                total_duration = (gantt_df["Finish"].max() - gantt_df["Start"].min()).days if len(gantt_df) > 0 else 0
-                st.metric("Total Project Duration", f"{total_duration} days")
-            with col3:
-                avg_duration = gantt_df["Duration"].mean() if len(gantt_df) > 0 else 0
-                st.metric("Avg Task Duration", f"{avg_duration:.1f} days")
-            with col4:
-                if avg_delay > 0:
-                    st.metric("Average Delay", f"{avg_delay:.1f} days")
-                else:
-                    st.metric("Average Delay", "0 days")
     
     else:
         # Task-level view (no phases available)
@@ -1699,12 +1576,125 @@ with tabs[2]:
         st.markdown("---")
         st.markdown("### 📊 Project Impact Analysis")
     
-    unassigned_df = gantt_df[gantt_df["assignee"] == "UNASSIGNED"]
+    unassigned_df = gantt_df[gantt_df["assignee"] == "UNASSIGNED"].copy()
     assigned_df = gantt_df[gantt_df["assignee"] != "UNASSIGNED"]
     
-    # Calculate project delay
-    max_delay = gantt_df["expected_delay_days"].max() if gantt_df["expected_delay_days"].notna().any() else 0
-    avg_delay = gantt_df["expected_delay_days"].mean() if gantt_df["expected_delay_days"].notna().any() else 0
+    # Time-based urgency analysis (14 weeks = 98 days)
+    today = date.today()
+    urgent_window_days = 98  # 14 weeks
+    allocation_time_days = 7  # Time to allocate/reassign existing employee
+    hiring_time_days = 40  # Time to hire new employee
+    
+    # Helper function to check if skills can be allocated (someone has them)
+    def can_allocate_skills(required_skills_str: str) -> bool:
+        """Check if any employee has the required skills (can allocate vs need to hire)"""
+        if not required_skills_str or str(required_skills_str).strip() == "":
+            return False
+        
+        # Parse required skills
+        required_skills = [s.strip() for s in str(required_skills_str).split(",") if s.strip()]
+        if not required_skills:
+            return False
+        
+        # Check if any employee has all required skills
+        for emp_id in employees:
+            has_all = True
+            for skill in required_skills:
+                skill_exists = not people_raw[(people_raw["employee_id"] == emp_id) & 
+                                             (people_raw["skill"] == skill)].empty
+                if not skill_exists:
+                    has_all = False
+                    break
+            if has_all:
+                return True
+        return False
+    
+    # Analyze unassigned tasks by urgency
+    urgent_tasks = []
+    near_term_tasks = []
+    future_tasks = []
+    current_delay_days = 0
+    projected_delay_days = 0
+    recoverable_tasks = []
+    will_be_delayed_tasks = []
+    
+    for _, task in unassigned_df.iterrows():
+        due_date = task.get("target_end")
+        if pd.isna(due_date):
+            due_date = task.get("Finish")
+        if pd.isna(due_date):
+            future_tasks.append(task)
+            continue
+        
+        # Convert to date if needed
+        if isinstance(due_date, pd.Timestamp):
+            due_date = due_date.date()
+        elif isinstance(due_date, datetime):
+            due_date = due_date.date()
+        elif isinstance(due_date, str):
+            try:
+                due_date = pd.to_datetime(due_date).date()
+            except:
+                future_tasks.append(task)
+                continue
+        
+        days_until_due = (due_date - today).days
+        missing_skills_str = str(task.get("missing_skills", "")).strip()
+        can_allocate = can_allocate_skills(missing_skills_str)
+        
+        # Determine resolution time
+        if can_allocate:
+            resolution_time = allocation_time_days
+            action_type = "allocate"
+        else:
+            resolution_time = hiring_time_days
+            action_type = "hire"
+        
+        # Categorize by urgency
+        if days_until_due < 0:
+            # Already past due
+            current_delay_days = max(current_delay_days, abs(days_until_due) + resolution_time)
+            urgent_tasks.append({**task.to_dict(), "action_type": action_type, "resolution_time": resolution_time, "days_until_due": days_until_due})
+        elif days_until_due <= urgent_window_days:
+            # Urgent: due within 14 weeks
+            urgent_tasks.append({**task.to_dict(), "action_type": action_type, "resolution_time": resolution_time, "days_until_due": days_until_due})
+            
+            # Calculate if task will be delayed
+            if days_until_due < resolution_time:
+                # Will be delayed even if we act now
+                delay = resolution_time - days_until_due
+                projected_delay_days = max(projected_delay_days, delay)
+                will_be_delayed_tasks.append({**task.to_dict(), "action_type": action_type, "resolution_time": resolution_time, "delay": delay})
+            else:
+                # Can be saved if we act fast
+                days_to_act = days_until_due - resolution_time
+                recoverable_tasks.append({**task.to_dict(), "action_type": action_type, "resolution_time": resolution_time, "days_to_act": days_to_act})
+        elif days_until_due <= urgent_window_days * 2:
+            # Near-term: 14-28 weeks
+            near_term_tasks.append({**task.to_dict(), "action_type": action_type, "resolution_time": resolution_time, "days_until_due": days_until_due})
+        else:
+            # Future: >28 weeks
+            future_tasks.append({**task.to_dict(), "action_type": action_type, "resolution_time": resolution_time, "days_until_due": days_until_due})
+    
+    # Calculate overall project status
+    total_urgent = len(urgent_tasks)
+    total_will_be_delayed = len(will_be_delayed_tasks)
+    total_recoverable = len(recoverable_tasks)
+    max_delay = max(current_delay_days, projected_delay_days)
+    
+    # Determine project status
+    if current_delay_days > 0 or total_urgent > 10 or total_will_be_delayed > 5:
+        project_status = "Critical"
+        status_color = "🔴"
+    elif total_urgent > 5 or total_will_be_delayed > 0 or max_delay > 0:
+        project_status = "At Risk"
+        status_color = "🟠"
+    elif total_urgent > 0:
+        project_status = "On Track"
+        status_color = "🟡"
+    else:
+        project_status = "Healthy"
+        status_color = "🟢"
     
     # Aggregate missing skills from unassigned tasks
     all_missing_skills = {}
@@ -1718,6 +1708,10 @@ with tabs[2]:
     
     # Sort skills by frequency
     sorted_missing_skills = sorted(all_missing_skills.items(), key=lambda x: x[1], reverse=True)
+    
+    # Count allocation vs hiring needs
+    allocation_needed = sum(1 for t in urgent_tasks if t.get("action_type") == "allocate")
+    hiring_needed = sum(1 for t in urgent_tasks if t.get("action_type") == "hire")
     
     # Create impact summary
     col1, col2, col3, col4 = st.columns(4)
@@ -1734,15 +1728,12 @@ with tabs[2]:
         )
     
     with col2:
-        if max_delay > 0:
-            st.metric(
-                "Estimated Project Delay",
-                f"{max_delay:.0f} days",
-                delta=f"Max delay" if max_delay > 0 else None,
-                delta_color="inverse"
-            )
-        else:
-            st.metric("Estimated Project Delay", "On schedule")
+        st.metric(
+            "Project Status",
+            f"{status_color} {project_status}",
+            delta=f"{total_urgent} urgent tasks" if total_urgent > 0 else None,
+            delta_color="inverse" if project_status in ["Critical", "At Risk"] else "normal"
+        )
     
     with col3:
         critical_tasks = len(unassigned_df[unassigned_df["risk_band"] == "Critical"])
@@ -1786,18 +1777,39 @@ with tabs[2]:
         
         with rec_col2:
             st.markdown("**Action Items:**")
-            if max_delay > 0:
-                st.warning(f"⚠️ **Project at risk**: Estimated delay of up to {max_delay:.0f} days")
             
+            # Urgency-based recommendations
+            if total_urgent > 0:
+                if current_delay_days > 0:
+                    st.error(f"🚨 **Already late**: {current_delay_days:.0f} days delay. {total_urgent} tasks due within 14 weeks are unassigned.")
+                elif total_will_be_delayed > 0:
+                    st.warning(f"⚠️ **Will be delayed**: {total_will_be_delayed} tasks will be delayed by {projected_delay_days:.0f} days even with immediate action.")
+                else:
+                    st.warning(f"⚠️ **Urgent action needed**: {total_urgent} tasks due within 14 weeks are unassigned.")
+            
+            # Recovery recommendations
+            if total_recoverable > 0:
+                min_days_to_act = min([t.get("days_to_act", 0) for t in recoverable_tasks], default=0)
+                if allocation_needed > 0:
+                    st.info(f"💡 **Allocate within {min_days_to_act:.0f} days**: Can save {allocation_needed} tasks by reallocating existing employees.")
+                if hiring_needed > 0:
+                    st.info(f"💡 **Hire within {min_days_to_act:.0f} days**: Can save {hiring_needed} tasks by hiring new employees.")
+            
+            # Skill gaps summary
             if sorted_missing_skills:
                 total_skill_gaps = sum(all_missing_skills.values())
-                st.info(f"💡 **Hiring/Allocation needed**: {total_skill_gaps} skill gaps across {unique_missing_skills_count} skill types")
+                if allocation_needed > 0 and hiring_needed > 0:
+                    st.info(f"📋 **Resource needs**: {allocation_needed} tasks can be allocated, {hiring_needed} tasks require hiring.")
+                elif allocation_needed > 0:
+                    st.info(f"📋 **Allocation needed**: {allocation_needed} tasks can be assigned by reallocating existing employees.")
+                elif hiring_needed > 0:
+                    st.info(f"📋 **Hiring needed**: {hiring_needed} tasks require hiring new employees with specific skills.")
             
-            if critical_tasks > 0:
-                st.error(f"🚨 **Urgent**: {critical_tasks} critical task{'s' if critical_tasks > 1 else ''} unassigned")
-            
-            if unassigned_count > 0 and max_delay == 0:
-                st.info("✅ **Capacity planning**: Tasks are unassigned but no delays estimated yet. Review capacity allocation.")
+            # Status-specific messages
+            if project_status == "Critical":
+                st.error(f"🔴 **Critical**: Immediate action required to prevent project failure.")
+            elif project_status == "At Risk":
+                st.warning(f"🟠 **At Risk**: Take action within 7-14 days to stay on track.")
     else:
         st.success("✅ **All tasks assigned!** Project is on track with full resource allocation.")
     
@@ -1811,6 +1823,8 @@ with tabs[2]:
             avg_duration = gantt_df["Duration"].mean() if len(gantt_df) > 0 else 0
             st.metric("Avg Task Duration", f"{avg_duration:.1f} days")
         with col3:
+            # Calculate average delay from expected_delay_days or from current/projected delays
+            avg_delay = max(current_delay_days, projected_delay_days) if (current_delay_days > 0 or projected_delay_days > 0) else 0
             if avg_delay > 0:
                 st.metric("Average Delay", f"{avg_delay:.1f} days")
             else:
