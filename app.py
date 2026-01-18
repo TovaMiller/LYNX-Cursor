@@ -1977,7 +1977,7 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-tabs = st.tabs(["Timeline", "Assignments", "Workload", "Details"])
+tabs = st.tabs(["Timeline", "Assignments", "People Timeline", "Details"])
 
 # ============================================
 # TAB 1: GANTT CHART (Primary View)
@@ -2885,7 +2885,7 @@ with tabs[1]:
         }
     )
 
-# TAB 3: WORKLOAD ANALYSIS
+# TAB 3: RESOURCE ALLOCATION TIMELINE
 # ============================================
 with tabs[2]:
     st.markdown("""
@@ -2896,154 +2896,209 @@ with tabs[2]:
                 font-weight: 600;
                 letter-spacing: -0.02em;
                 margin-bottom: 0.75rem;
-            ">Capacity Analysis</h3>
+            ">Resource Allocation Timeline</h3>
             <p style="
                 color: #64748B;
                 font-size: 1rem;
                 margin: 0;
                 line-height: 1.6;
-            ">Resource utilization trends and capacity planning insights</p>
+            ">Visual timeline of task assignments per team member</p>
         </div>
     """, unsafe_allow_html=True)
     
-    w_start = min(assign_df["planned_start"])
-    w_end = max(assign_df["planned_finish"])
-    days = daterange(w_start, w_end)
+    # Get assigned tasks only (no unassigned)
+    assigned_tasks = assign_df[assign_df["assignee"] != "UNASSIGNED"].copy()
     
-    rows = []
-    for emp in employees:
-        cap = float(emp_fte.get(emp, 1.0))
-        for d in days:
-            load = daily_load[emp].get(d, 0.0)
-            util = load / cap if cap > 0 else 0.0
-            rows.append({"assignee": emp, "date": d, "load": load, "capacity": cap, "utilization": util})
-    
-    workload_df = pd.DataFrame(rows)
-    
-    # Summary statistics
-    summary = workload_df.groupby("assignee").agg(
-        avg_util=("utilization", "mean"),
-        max_util=("utilization", "max"),
-        total_effort=("load", "sum"),
-        fte=("capacity", "max")
-    ).reset_index()
-    
-    # Overview metrics
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Total Employees", len(employees))
-    with col2:
-        avg_util_all = summary["avg_util"].mean()
-        st.metric("Avg Utilization", f"{avg_util_all*100:.1f}%")
-    with col3:
-        overloaded = len(summary[summary["max_util"] > 1.0])
-        st.metric("Overloaded", overloaded, f"{overloaded/len(employees)*100:.0f}%")
-    with col4:
-        underutilized = len(summary[summary["avg_util"] < 0.5])
-        st.metric("Underutilized", underutilized, f"{underutilized/len(employees)*100:.0f}%")
-    
-    st.markdown("---")
-    
-    # Charts
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        summary_sorted = summary.sort_values("avg_util", ascending=False)
-        fig_bar = px.bar(
-            summary_sorted,
-            x="assignee",
-            y="avg_util",
-            color="avg_util",
-            color_continuous_scale=["#10B981", "#F59E0B", "#EF4444", "#DC2626"],
-            labels={"avg_util": "Average Utilization", "assignee": "Employee"},
-            title="Average Utilization by Employee",
-            hover_data=["max_util", "fte", "total_effort"]
-        )
-        fig_bar.add_hline(y=1.0, line_dash="dash", line_color="#DC2626", annotation_text="100% Capacity")
-        fig_bar.update_layout(
-            height=400, 
-            showlegend=False,
-            plot_bgcolor='white',
-            paper_bgcolor='white',
-            font=dict(family="Inter, sans-serif", size=11)
-        )
-        fig_bar.update_xaxes(tickangle=45)
-        st.plotly_chart(fig_bar, use_container_width=True)
-    
-    with col2:
-        # Heatmap of utilization over time
-        pivot_data = workload_df.pivot_table(
-            index="assignee",
-            columns="date",
-            values="utilization",
-            aggfunc="mean"
-        )
+    if len(assigned_tasks) == 0:
+        st.warning("No tasks have been assigned yet.")
+    else:
+        # Calculate numeric work size if not present
+        if "work_size_num" not in assigned_tasks.columns:
+            assigned_tasks["work_size_num"] = assigned_tasks["work_size"].apply(size_to_effort)
+        # Calculate timeline range
+        min_date = pd.to_datetime(assigned_tasks["planned_start"].min())
+        max_date = pd.to_datetime(assigned_tasks["planned_finish"].max())
+        date_padding = timedelta(days=7)
+        min_date = min_date - date_padding
+        max_date = max_date + date_padding
+        date_range = (max_date - min_date).days
         
-        fig_heatmap = px.imshow(
-            pivot_data.values,
-            labels=dict(x="Date", y="Employee", color="Utilization"),
-            x=[str(d) for d in pivot_data.columns],
-            y=pivot_data.index,
-            color_continuous_scale=["#10B981", "#F59E0B", "#EF4444", "#DC2626"],
-            aspect="auto",
-            title="Utilization Heatmap Over Time"
-        )
-        fig_heatmap.update_layout(
-            height=400,
-            plot_bgcolor='white',
-            paper_bgcolor='white',
-            font=dict(family="Inter, sans-serif", size=11)
-        )
-        st.plotly_chart(fig_heatmap, use_container_width=True)
-    
-    st.markdown("---")
-    
-    # Time series chart
-    st.subheader("Utilization Trends")
-    selected_employees = st.multiselect(
-        "Select employees to view",
-        options=sorted(employees),
-        default=sorted(employees)[:min(5, len(employees))],
-        key="workload_employee_select"
-    )
-    
-    if selected_employees:
-        filtered_workload = workload_df[workload_df["assignee"].isin(selected_employees)]
-        fig_line = px.line(
-            filtered_workload,
-            x="date",
-            y="utilization",
-            color="assignee",
-            labels={"utilization": "Utilization", "date": "Date"},
-            title="Daily Utilization Over Time"
-        )
-        fig_line.add_hline(y=1.0, line_dash="dash", line_color="#DC2626", annotation_text="100% Capacity")
-        fig_line.update_layout(
-            height=400,
-            plot_bgcolor='white',
-            paper_bgcolor='white',
-            font=dict(family="Inter, sans-serif", size=11)
-        )
-        st.plotly_chart(fig_line, use_container_width=True)
-    
-    # Summary table
-    st.subheader("Employee Summary")
-    summary_display = summary.sort_values("avg_util", ascending=False)
-    summary_display["avg_util_pct"] = (summary_display["avg_util"] * 100).round(1)
-    summary_display["max_util_pct"] = (summary_display["max_util"] * 100).round(1)
-    
-    st.dataframe(
-        summary_display[["assignee", "fte", "avg_util_pct", "max_util_pct", "total_effort"]],
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "assignee": "Employee",
-            "fte": "FTE",
-            "avg_util_pct": st.column_config.NumberColumn("Avg Utilization %", format="%.1f%%"),
-            "max_util_pct": st.column_config.NumberColumn("Max Utilization %", format="%.1f%%"),
-            "total_effort": st.column_config.NumberColumn("Total Effort", format="%.1f"),
+        # Color mapping by risk
+        risk_colors = {
+            "Low": "#10B981",
+            "Medium": "#F59E0B",
+            "High": "#EF4444",
+            "Critical": "#DC2626"
         }
-    )
+        
+        # Group tasks by employee
+        employee_tasks = assigned_tasks.groupby("assignee")
+        
+        # Get all employees with assignments
+        assigned_employees = sorted(assigned_tasks["assignee"].unique())
+        
+        # Summary metrics
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Assigned Employees", len(assigned_employees))
+        with col2:
+            st.metric("Total Tasks Assigned", len(assigned_tasks))
+        with col3:
+            avg_tasks = len(assigned_tasks) / len(assigned_employees) if len(assigned_employees) > 0 else 0
+            st.metric("Avg Tasks per Person", f"{avg_tasks:.1f}")
+        
+        st.markdown('<div style="height: 2rem;"></div>', unsafe_allow_html=True)
+        
+        # Timeline header
+        timeline_cols = st.columns([3, 9])
+        with timeline_cols[1]:
+            # Generate monthly date labels
+            date_labels_data = []
+            current_date = min_date.replace(day=1)
+            while current_date <= max_date:
+                if date_range > 0:
+                    position_pct = max(0, min(100, (current_date - min_date).days / date_range * 100))
+                else:
+                    position_pct = 0
+                date_label = current_date.strftime("%b %Y")
+                date_labels_data.append({"label": date_label, "position": position_pct})
+                if current_date.month == 12:
+                    current_date = current_date.replace(year=current_date.year + 1, month=1)
+                else:
+                    current_date = current_date.replace(month=current_date.month + 1)
+            
+            # Filter overlapping labels
+            filtered_labels = []
+            min_spacing = 8
+            for label_data in date_labels_data:
+                if not filtered_labels or label_data["position"] - filtered_labels[-1]["position"] >= min_spacing:
+                    filtered_labels.append(label_data)
+            
+            # Render timeline header
+            date_labels_html = "".join([
+                f"<span style='position: absolute; left: {label_data['position']}%; transform: translateX(-50%); white-space: nowrap; font-size: 11px; color: #64748B;'>{label_data['label']}</span>"
+                for label_data in filtered_labels
+            ])
+            st.markdown(f"""
+                <div style="
+                    position: relative;
+                    height: 40px;
+                    padding: 8px;
+                    border-bottom: 2px solid #E2E8F0;
+                    background: #FAFBFC;
+                    border-radius: 8px 8px 0 0;
+                ">{date_labels_html}</div>
+            """, unsafe_allow_html=True)
+        
+        # Render each employee row
+        for emp in assigned_employees:
+            emp_tasks = assigned_tasks[assigned_tasks["assignee"] == emp].copy()
+            task_count = len(emp_tasks)
+            
+            # Calculate total workload in days
+            total_workload = emp_tasks["work_size_num"].sum()
+            
+            row_cols = st.columns([3, 9])
+            
+            with row_cols[0]:
+                # Employee info card
+                st.markdown(f"""
+                    <div style="
+                        padding: 1.25rem 1rem;
+                        background: white;
+                        border-radius: 8px;
+                        border: 1px solid #E2E8F0;
+                        margin-bottom: 0.5rem;
+                        min-height: 80px;
+                    ">
+                        <p style="
+                            color: #0F172A;
+                            font-size: 1rem;
+                            font-weight: 600;
+                            margin: 0 0 0.25rem 0;
+                        ">{emp}</p>
+                        <p style="
+                            color: #64748B;
+                            font-size: 0.8125rem;
+                            margin: 0 0 0.5rem 0;
+                        ">{task_count} task{'s' if task_count != 1 else ''}</p>
+                        <p style="
+                            color: #94A3B8;
+                            font-size: 0.75rem;
+                            margin: 0;
+                        ">{total_workload:.1f} FTE days</p>
+                    </div>
+                """, unsafe_allow_html=True)
+            
+            with row_cols[1]:
+                # Timeline container
+                timeline_html = f"""
+                <div style="
+                    position: relative;
+                    min-height: 80px;
+                    background: white;
+                    border: 1px solid #E2E8F0;
+                    border-radius: 8px;
+                    margin-bottom: 0.5rem;
+                    padding: 0.75rem 0;
+                ">
+                """
+                
+                # Add task bars
+                for idx, task in emp_tasks.iterrows():
+                    task_start = pd.to_datetime(task["planned_start"])
+                    task_finish = pd.to_datetime(task["planned_finish"])
+                    
+                    if date_range > 0:
+                        start_offset = max(0, (task_start - min_date).days / date_range * 100)
+                        bar_width = max(1, (task_finish - task_start).days / date_range * 100)
+                    else:
+                        start_offset = 0
+                        bar_width = 100
+                    
+                    risk_color = risk_colors.get(task.get("risk_band", "Low"), "#94A3B8")
+                    task_name_raw = str(task.get("task_name", ""))[:40]
+                    # Escape HTML special characters
+                    task_name = task_name_raw.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&#39;")
+                    
+                    # Build tooltip text
+                    tooltip_text = f"{task_name_raw} | Start: {task_start.strftime('%Y-%m-%d')} | End: {task_finish.strftime('%Y-%m-%d')} | Risk: {task.get('risk_band', 'N/A')}"
+                    tooltip_text = tooltip_text.replace('"', "&quot;")
+                    
+                    timeline_html += f"""<div style="position: absolute; left: {start_offset}%; width: {bar_width}%; top: 50%; transform: translateY(-50%); height: 36px; background: {risk_color}; border-radius: 6px; padding: 0.5rem 0.75rem; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); cursor: pointer; transition: all 0.2s ease; overflow: hidden;" title="{tooltip_text}"><p style="color: white; font-size: 0.75rem; font-weight: 600; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{task_name}</p></div>"""
+                
+                timeline_html += "</div>"
+                st.markdown(timeline_html, unsafe_allow_html=True)
+        
+        # Legend
+        st.markdown('<div style="height: 2rem;"></div>', unsafe_allow_html=True)
+        st.markdown("""
+            <div style="
+                text-align: center;
+                padding: 1.5rem;
+                background: #FAFBFC;
+                border-radius: 8px;
+                border: 1px solid #E2E8F0;
+            ">
+                <strong style="color: #475569; font-size: 0.875rem;">Risk Level:</strong>
+                <span style="margin-left: 1.5rem;">
+                    <span style="display: inline-block; width: 12px; height: 12px; background: #10B981; border-radius: 2px; margin-right: 0.25rem; vertical-align: middle;"></span>
+                    <span style="color: #64748B; font-size: 0.8125rem;">Low</span>
+                </span>
+                <span style="margin-left: 1rem;">
+                    <span style="display: inline-block; width: 12px; height: 12px; background: #F59E0B; border-radius: 2px; margin-right: 0.25rem; vertical-align: middle;"></span>
+                    <span style="color: #64748B; font-size: 0.8125rem;">Medium</span>
+                </span>
+                <span style="margin-left: 1rem;">
+                    <span style="display: inline-block; width: 12px; height: 12px; background: #EF4444; border-radius: 2px; margin-right: 0.25rem; vertical-align: middle;"></span>
+                    <span style="color: #64748B; font-size: 0.8125rem;">High</span>
+                </span>
+                <span style="margin-left: 1rem;">
+                    <span style="display: inline-block; width: 12px; height: 12px; background: #DC2626; border-radius: 2px; margin-right: 0.25rem; vertical-align: middle;"></span>
+                    <span style="color: #64748B; font-size: 0.8125rem;">Critical</span>
+                </span>
+            </div>
+        """, unsafe_allow_html=True)
 
 # ============================================
 # TAB 4: TASK DETAILS
