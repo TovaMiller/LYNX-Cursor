@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta, date
 
 # ============================================
-# CUSTOM CSS - PALANTIR GOTHAM / WAYVE STYLE
+# CUSTOM CSS - MINIMALIST PROFESSIONAL DESIGN
 # ============================================
 st.markdown("""
 <style>
@@ -21,33 +21,31 @@ st.markdown("""
     
     /* Main container */
     .main .block-container {
-        padding-top: 1.5rem;
-        padding-bottom: 1.5rem;
-        max-width: 1400px;
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+        max-width: 1200px;
     }
     
-    /* Header - Professional, minimal */
+    /* Typography - Clean & Modern */
     h1 {
-        color: #1A1D29;
-        font-weight: 600;
-        font-size: 2rem;
-        letter-spacing: -0.02em;
-        margin-bottom: 0.5rem;
-        border-bottom: 1px solid #E5E7EB;
-        padding-bottom: 0.75rem;
+        color: #0A0A0A;
+        font-weight: 700;
+        font-size: 2.25rem;
+        letter-spacing: -0.03em;
+        margin-bottom: 0.75rem;
     }
     
     h2 {
-        color: #2C3E50;
+        color: #1A1A1A;
         font-weight: 600;
-        font-size: 1.5rem;
-        letter-spacing: -0.01em;
-        margin-top: 2rem;
-        margin-bottom: 1rem;
+        font-size: 1.75rem;
+        letter-spacing: -0.02em;
+        margin-top: 3rem;
+        margin-bottom: 1.25rem;
     }
     
     h3 {
-        color: #34495E;
+        color: #2A2A2A;
         font-weight: 600;
         font-size: 1.25rem;
         margin-top: 1.5rem;
@@ -121,38 +119,55 @@ st.markdown("""
         border-radius: 6px;
     }
     
-    /* Tabs - Professional styling */
+    /* Tabs - Minimalist Design */
     .stTabs [data-baseweb="tab-list"] {
         gap: 0;
-        border-bottom: 2px solid #E5E7EB;
+        border-bottom: 1px solid #E5E7EB;
+        background: transparent;
     }
     
     .stTabs [data-baseweb="tab"] {
-        padding: 0.75rem 1.5rem;
+        padding: 1rem 1.75rem;
         font-weight: 500;
+        font-size: 0.9375rem;
         color: #6B7280;
         border-bottom: 2px solid transparent;
-        margin-bottom: -2px;
+        margin-bottom: -1px;
+        transition: all 0.2s ease;
+    }
+    
+    .stTabs [data-baseweb="tab"]:hover {
+        color: #1A1A1A;
     }
     
     .stTabs [aria-selected="true"] {
-        color: #0066CC;
-        border-bottom-color: #0066CC;
+        color: #0A0A0A;
+        border-bottom-color: #0A0A0A;
         font-weight: 600;
     }
     
-    /* Buttons and inputs */
-    .stButton>button {
-        background-color: #0066CC;
+    /* Primary Button - Clean & Modern */
+    .stButton>button[kind="primary"] {
+        background-color: #0A0A0A;
         color: white;
-        border-radius: 6px;
+        border-radius: 8px;
         border: none;
-        font-weight: 500;
-        padding: 0.5rem 1.5rem;
+        font-weight: 600;
+        padding: 0.875rem 2rem;
+        font-size: 0.9375rem;
+        letter-spacing: 0.01em;
+        transition: all 0.2s ease;
     }
     
-    .stButton>button:hover {
-        background-color: #0052A3;
+    .stButton>button[kind="primary"]:hover {
+        background-color: #2A2A2A;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    
+    .stButton>button[kind="primary"]:active {
+        transform: translateY(0);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     }
     
     /* File uploader */
@@ -530,43 +545,102 @@ if "allocation_complete" not in st.session_state:
 # UPLOAD SCREEN (Before Allocation)
 # ============================================
 if not st.session_state.allocation_complete:
-    st.markdown("### Resource Allocation System")
-    st.markdown("Upload your data files to begin the allocation process")
-    st.markdown("---")
+    # Minimalist header
+    st.markdown("""
+        <div style="margin-bottom: 3rem;">
+            <h1 style="
+                color: #0A0A0A;
+                font-size: 2rem;
+                font-weight: 700;
+                letter-spacing: -0.03em;
+                margin-bottom: 0.5rem;
+            ">Resource Allocation</h1>
+            <p style="
+                color: #6B7280;
+                font-size: 0.9375rem;
+                margin: 0;
+            ">Upload data and configure task requirements</p>
+        </div>
+    """, unsafe_allow_html=True)
     
-    st.header("Data Input & Configuration")
-    
-    st.subheader("Upload Data Templates")
+    st.markdown("""
+        <div style="margin-bottom: 2rem;">
+            <h3 style="
+                color: #1A1A1A;
+                font-size: 1.125rem;
+                font-weight: 600;
+                margin-bottom: 1rem;
+            ">Data Input</h3>
+        </div>
+    """, unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("**Tasks Template**")
-        st.caption("Export from Jira with task information")
+        st.markdown("""
+            <p style="color: #1A1A1A; font-weight: 600; font-size: 0.875rem; margin-bottom: 0.5rem;">Tasks</p>
+            <p style="color: #6B7280; font-size: 0.8125rem; margin-bottom: 0.75rem;">Task assignments and requirements</p>
+        """, unsafe_allow_html=True)
         task_file = st.file_uploader(
             "Upload Tasks Excel File",
             type=["xlsx"],
             key="tasks_upl",
-            help="Required columns: task_id, task_name, department, start_date, end_date, work_size. Optional: priority, phase (for phase grouping)"
+            label_visibility="collapsed",
+            help="Required: task_id, task_name, department, start_date, end_date, work_size"
         )
         if task_file:
-            st.success(f"{task_file.name} uploaded")
+            st.markdown(f"""
+                <div style="
+                    padding: 0.5rem 0.75rem;
+                    background: #F0FDF4;
+                    border: 1px solid #D1FAE5;
+                    border-radius: 6px;
+                    margin-top: 0.5rem;
+                ">
+                    <p style="color: #065F46; font-size: 0.8125rem; margin: 0; font-weight: 500;">{task_file.name}</p>
+                </div>
+            """, unsafe_allow_html=True)
     
     with col2:
-        st.markdown("**People Template**")
-        st.caption("Export from HiBob + Lattice with employee skills")
+        st.markdown("""
+            <p style="color: #1A1A1A; font-weight: 600; font-size: 0.875rem; margin-bottom: 0.5rem;">People</p>
+            <p style="color: #6B7280; font-size: 0.8125rem; margin-bottom: 0.75rem;">Employee skills and capacity</p>
+        """, unsafe_allow_html=True)
         people_file = st.file_uploader(
             "Upload People Excel File",
             type=["xlsx"],
             key="people_upl",
-            help="Required columns: employee_id, skill, proficiency, job_level, fte"
+            label_visibility="collapsed",
+            help="Required: employee_id, skill, proficiency, job_level, fte"
         )
         if people_file:
-            st.success(f"{people_file.name} uploaded")
+            st.markdown(f"""
+                <div style="
+                    padding: 0.5rem 0.75rem;
+                    background: #F0FDF4;
+                    border: 1px solid #D1FAE5;
+                    border-radius: 6px;
+                    margin-top: 0.5rem;
+                ">
+                    <p style="color: #065F46; font-size: 0.8125rem; margin: 0; font-weight: 500;">{people_file.name}</p>
+                </div>
+            """, unsafe_allow_html=True)
     
-    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+    st.markdown('<div style="height: 2rem;"></div>', unsafe_allow_html=True)
     
     if not (task_file and people_file):
-        st.info("Please upload both templates to continue with resource planning.")
+        st.markdown("""
+            <div style="
+                padding: 1rem 1.25rem;
+                background: #F9FAFB;
+                border: 1px solid #E5E7EB;
+                border-radius: 8px;
+                margin: 1.5rem 0;
+            ">
+                <p style="color: #6B7280; font-size: 0.875rem; margin: 0;">
+                    Please upload both files to continue
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
         st.stop()
     
     # Load and validate data
@@ -699,7 +773,19 @@ if not st.session_state.allocation_complete:
     if skills_blob_col is not None:
         # Show how many tasks have skills parsed
         tasks_with_skills = len([tid for tid, skills in parsed_by_task.items() if len(skills) > 0])
-        st.success(f"✓ Detected skills column: **'{skills_blob_col}'**. Parsed skills from {tasks_with_skills} tasks. Pre-filled below for editing.")
+        st.markdown(f"""
+            <div style="
+                padding: 0.75rem 1rem;
+                background: #F0FDF4;
+                border-left: 3px solid #10B981;
+                border-radius: 4px;
+                margin: 1rem 0;
+            ">
+                <p style="color: #065F46; font-size: 0.875rem; margin: 0;">
+                    <strong>Skills detected:</strong> Found {tasks_with_skills} tasks with pre-configured skills in column '{skills_blob_col}'
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
     else:
         # Debug: show available columns that might be skills
         potential_cols = [c for c in tasks_raw.columns if 'skill' in str(c).lower()]
@@ -807,49 +893,131 @@ if not st.session_state.allocation_complete:
     st.session_state.people_raw = people_raw
     
     # ============================================
-    # START ALLOCATION BUTTON
+    # START ALLOCATION BUTTON - MINIMALIST DESIGN
     # ============================================
-    st.markdown("---")
-    st.markdown("### Run Resource Allocation")
-    st.markdown("Analyze skills, capacity, and assign tasks to employees based on intelligent matching algorithms.")
+    st.markdown("""
+        <div style="
+            margin: 4rem 0 3rem 0;
+            padding: 3rem 0;
+            border-top: 1px solid #E5E7EB;
+            border-bottom: 1px solid #E5E7EB;
+        ">
+            <div style="text-align: center; max-width: 600px; margin: 0 auto;">
+                <h2 style="
+                    color: #0A0A0A;
+                    font-size: 1.5rem;
+                    font-weight: 600;
+                    letter-spacing: -0.02em;
+                    margin-bottom: 0.75rem;
+                ">Resource Allocation</h2>
+                <p style="
+                    color: #6B7280;
+                    font-size: 0.9375rem;
+                    line-height: 1.6;
+                    margin-bottom: 2rem;
+                ">
+                    Intelligent skill matching and capacity optimization engine
+                </p>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
     
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
+    col_btn1, col_btn2, col_btn3 = st.columns([1, 1.5, 1])
     with col_btn2:
         run_allocation = st.button(
             "Start Allocation",
             type="primary",
             use_container_width=True,
-            help="Begin the resource allocation process"
+            help="Begin resource allocation analysis"
         )
     
     if run_allocation:
-        # Professional loading UI
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
+        # Minimalist loading state
         import time
+        
+        loading_container = st.empty()
+        
         steps = [
-            ("Analyzing skill requirements", 0.2),
-            ("Matching employees to tasks", 0.5),
+            ("Analyzing requirements", 0.2),
+            ("Matching resources", 0.5),
             ("Optimizing assignments", 0.7),
-            ("Calculating risk scores", 0.9),
-            ("Finalizing allocation", 1.0)
+            ("Calculating metrics", 0.9),
+            ("Finalizing", 1.0)
         ]
         
-        for step_text, progress in steps:
-            status_text.text(step_text + "...")
-            progress_bar.progress(progress)
+        for step_text, progress_val in steps:
+            loading_container.markdown(f"""
+                <div style="
+                    text-align: center;
+                    padding: 2.5rem 2rem;
+                    max-width: 500px;
+                    margin: 2rem auto;
+                ">
+                    <div style="
+                        width: 100%;
+                        height: 2px;
+                        background: #F3F4F6;
+                        border-radius: 1px;
+                        overflow: hidden;
+                        margin-bottom: 1.5rem;
+                    ">
+                        <div style="
+                            width: {progress_val * 100}%;
+                            height: 100%;
+                            background: #0A0A0A;
+                            transition: width 0.3s ease;
+                        "></div>
+                    </div>
+                    <p style="
+                        color: #6B7280;
+                        font-size: 0.875rem;
+                        font-weight: 500;
+                        margin: 0;
+                        letter-spacing: 0.01em;
+                    ">{step_text}</p>
+                </div>
+            """, unsafe_allow_html=True)
             time.sleep(0.3)
         
         st.session_state.allocation_complete = True
-        status_text.empty()
-        progress_bar.empty()
+        loading_container.empty()
+        
+        # Minimal success state
+        st.markdown("""
+            <div style="
+                text-align: center;
+                padding: 1.5rem;
+                max-width: 500px;
+                margin: 2rem auto;
+                border: 1px solid #D1FAE5;
+                background: #F0FDF4;
+                border-radius: 8px;
+            ">
+                <p style="
+                    color: #065F46;
+                    font-size: 0.9375rem;
+                    font-weight: 600;
+                    margin: 0;
+                ">Allocation Complete</p>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        time.sleep(0.6)
         st.rerun()
     
-    # Stop here until allocation is run
-    st.info("Click 'Start Allocation' to begin the process")
+    # Minimal instruction
+    st.markdown("""
+        <div style="
+            text-align: center;
+            padding: 1rem 0 3rem 0;
+        ">
+            <p style="
+                color: #9CA3AF;
+                font-size: 0.875rem;
+                margin: 0;
+            ">Configure task skills below, then return to start allocation</p>
+        </div>
+    """, unsafe_allow_html=True)
     st.stop()
 
 # ============================================
@@ -1254,11 +1422,25 @@ with st.sidebar:
         st.write(f"**Employees with Assignments:** {len(assign_df[assign_df['assignee'] != 'UNASSIGNED']['assignee'].unique())}")
 
 # ============================================
-# CREATE TABS (Gantt Chart First)
+# CREATE TABS (Minimalist Design)
 # ============================================
-st.markdown("---")
-st.markdown("## Allocation Results")
-tabs = st.tabs(["Gantt Chart", "Allocation Results", "Workload Analysis", "Task Details"])
+st.markdown("""
+    <div style="
+        margin: 4rem 0 2rem 0;
+        padding-top: 3rem;
+        border-top: 1px solid #E5E7EB;
+    ">
+        <h2 style="
+            color: #0A0A0A;
+            font-size: 1.5rem;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            margin-bottom: 2rem;
+        ">Allocation Results</h2>
+    </div>
+""", unsafe_allow_html=True)
+
+tabs = st.tabs(["Timeline", "Assignments", "Workload", "Details"])
 
 # ============================================
 # TAB 1: GANTT CHART (Primary View)
@@ -1936,9 +2118,33 @@ with tabs[0]:
                 
                 st.warning(prediction_msg)
             elif not actual_days_overdue and total_urgent == 0:
-                st.success("✅ **All tasks within 14 weeks are assigned.** Project on track.")
+                st.markdown("""
+                    <div style="
+                        padding: 1rem 1.25rem;
+                        background: #F0FDF4;
+                        border: 1px solid #D1FAE5;
+                        border-radius: 8px;
+                        margin: 1rem 0;
+                    ">
+                        <p style="color: #065F46; font-size: 0.9375rem; font-weight: 600; margin: 0;">
+                            All tasks assigned — Project on track
+                        </p>
+                    </div>
+                """, unsafe_allow_html=True)
     else:
-        st.success("✅ **All tasks assigned!** Project is on track with full resource allocation.")
+        st.markdown("""
+            <div style="
+                padding: 1rem 1.25rem;
+                background: #F0FDF4;
+                border: 1px solid #D1FAE5;
+                border-radius: 8px;
+                margin: 1rem 0;
+            ">
+                <p style="color: #065F46; font-size: 0.9375rem; font-weight: 600; margin: 0;">
+                    All tasks assigned — Full resource allocation complete
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
 
 # ============================================
 
