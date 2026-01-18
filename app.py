@@ -7,74 +7,164 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta, date
 
 # ============================================
-# CUSTOM CSS - MINIMALIST PROFESSIONAL DESIGN
+# CUSTOM CSS - WAYVE-INSPIRED LIGHT & AIRY DESIGN
 # ============================================
 st.markdown("""
 <style>
-    /* Import professional font */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    /* Import professional fonts */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700;800&display=swap');
     
-    /* Global styles */
+    /* FORCE LIGHT MODE - Override system preferences */
+    :root {
+        color-scheme: light only !important;
+    }
+    
+    html, body, .main, .stApp {
+        background-color: #FFFFFF !important;
+        color: #0F172A !important;
+    }
+    
+    /* Prevent dark mode media query */
+    @media (prefers-color-scheme: dark) {
+        :root {
+            color-scheme: light !important;
+        }
+        body {
+            background-color: #FFFFFF !important;
+            color: #0F172A !important;
+        }
+    }
+    
+    /* Global reset and animations */
     * {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
     }
     
-    /* Main container */
+    /* Smooth fade-in animation */
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(30px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+    
+    /* Main container - Spacious */
     .main .block-container {
-        padding-top: 2rem;
-        padding-bottom: 2rem;
-        max-width: 1200px;
+        padding: 4rem 3rem;
+        max-width: 1400px;
+        animation: fadeIn 0.8s ease-out;
     }
     
-    /* Typography - Clean & Modern */
+    /* Hide Streamlit branding */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    
+    /* Typography - Light & Spacious */
     h1 {
-        color: #0A0A0A;
+        color: #0F172A;
         font-weight: 700;
-        font-size: 2.25rem;
-        letter-spacing: -0.03em;
-        margin-bottom: 0.75rem;
+        font-size: 3rem;
+        letter-spacing: -0.04em;
+        margin: 0 0 1.5rem 0;
+        line-height: 1.1;
+        animation: fadeInUp 0.6s ease-out;
     }
     
     h2 {
-        color: #1A1A1A;
+        color: #1E293B;
         font-weight: 600;
-        font-size: 1.75rem;
-        letter-spacing: -0.02em;
-        margin-top: 3rem;
-        margin-bottom: 1.25rem;
+        font-size: 2rem;
+        letter-spacing: -0.03em;
+        margin: 4rem 0 2rem 0;
+        line-height: 1.2;
+        animation: fadeInUp 0.7s ease-out;
     }
     
     h3 {
-        color: #2A2A2A;
+        color: #334155;
         font-weight: 600;
-        font-size: 1.25rem;
-        margin-top: 1.5rem;
-        margin-bottom: 0.75rem;
+        font-size: 1.5rem;
+        letter-spacing: -0.02em;
+        margin: 3rem 0 1.5rem 0;
+        line-height: 1.3;
     }
     
-    /* Sidebar - Professional gray */
+    p {
+        color: #64748B;
+        font-size: 1.0625rem;
+        line-height: 1.8;
+        font-weight: 400;
+        margin: 0 0 1.5rem 0;
+    }
+    
+    /* Sidebar - Ultra Light */
     [data-testid="stSidebar"] {
-        background-color: #F8F9FA;
-        border-right: 1px solid #E5E7EB;
+        background: linear-gradient(180deg, #FAFBFC 0%, #F8FAFC 100%);
+        border-right: 1px solid #F1F5F9;
+        padding: 2rem 1.5rem;
     }
     
     [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
-        color: #2C3E50;
+        color: #475569;
+        font-weight: 400;
     }
     
-    /* Metrics - Clean cards */
+    /* Metrics - Floating Cards */
+    [data-testid="stMetric"] {
+        background: white !important;
+        padding: 2rem;
+        border-radius: 16px;
+        box-shadow: 
+            0 1px 3px rgba(0, 0, 0, 0.05),
+            0 4px 12px rgba(0, 0, 0, 0.04);
+        border: 1px solid #F1F5F9;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        animation: fadeInUp 0.6s ease-out;
+    }
+    
+    [data-testid="stMetric"]:hover {
+        transform: translateY(-4px);
+        box-shadow: 
+            0 4px 16px rgba(0, 0, 0, 0.08),
+            0 12px 32px rgba(0, 0, 0, 0.06);
+    }
+    
     [data-testid="stMetricValue"] {
-        font-size: 2rem;
-        font-weight: 600;
-        color: #1A1D29;
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #0F172A !important;
+        letter-spacing: -0.02em;
     }
     
     [data-testid="stMetricLabel"] {
         font-size: 0.875rem;
-        color: #6B7280;
+        color: #64748B !important;
         font-weight: 500;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
+        letter-spacing: 0.08em;
+        margin-bottom: 0.75rem;
+    }
+    
+    /* Metric Delta - Ensure light background with proper contrast */
+    [data-testid="stMetricDelta"] {
+        background: transparent !important;
+        color: #64748B !important;
+    }
+    
+    [data-testid="stMetricDelta"] svg {
+        fill: #64748B !important;
     }
     
     /* Risk badges - Professional, minimal */
@@ -119,94 +209,248 @@ st.markdown("""
         border-radius: 6px;
     }
     
-    /* Tabs - Minimalist Design */
+    /* Tabs - Spacious & Light */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 0;
-        border-bottom: 1px solid #E5E7EB;
+        gap: 2rem;
+        border-bottom: 1px solid #F1F5F9;
         background: transparent;
+        padding: 0 0 0 1rem;
     }
     
     .stTabs [data-baseweb="tab"] {
-        padding: 1rem 1.75rem;
+        padding: 1.25rem 2rem;
         font-weight: 500;
-        font-size: 0.9375rem;
-        color: #6B7280;
-        border-bottom: 2px solid transparent;
+        font-size: 1rem;
+        color: #94A3B8;
+        border-bottom: 3px solid transparent;
         margin-bottom: -1px;
-        transition: all 0.2s ease;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        background: transparent;
     }
     
     .stTabs [data-baseweb="tab"]:hover {
-        color: #1A1A1A;
+        color: #475569;
+        background: rgba(248, 250, 252, 0.6);
+        border-radius: 12px 12px 0 0;
     }
     
     .stTabs [aria-selected="true"] {
-        color: #0A0A0A;
-        border-bottom-color: #0A0A0A;
+        color: #0F172A;
+        border-bottom-color: #0F172A;
         font-weight: 600;
+        background: white;
+        border-radius: 12px 12px 0 0;
     }
     
-    /* Primary Button - Clean & Modern */
+    /* Primary Button - Wayve Style */
     .stButton>button[kind="primary"] {
-        background-color: #0A0A0A;
+        background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
         color: white;
-        border-radius: 8px;
+        border-radius: 12px;
         border: none;
         font-weight: 600;
-        padding: 0.875rem 2rem;
-        font-size: 0.9375rem;
+        padding: 1rem 2.5rem;
+        font-size: 1rem;
         letter-spacing: 0.01em;
-        transition: all 0.2s ease;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 
+            0 4px 12px rgba(15, 23, 42, 0.15),
+            0 2px 4px rgba(15, 23, 42, 0.1);
     }
     
     .stButton>button[kind="primary"]:hover {
-        background-color: #2A2A2A;
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        transform: translateY(-2px);
+        box-shadow: 
+            0 12px 24px rgba(15, 23, 42, 0.2),
+            0 6px 12px rgba(15, 23, 42, 0.15);
+        background: linear-gradient(135deg, #1E293B 0%, #334155 100%);
     }
     
     .stButton>button[kind="primary"]:active {
         transform: translateY(0);
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        box-shadow: 
+            0 2px 8px rgba(15, 23, 42, 0.15),
+            0 1px 4px rgba(15, 23, 42, 0.1);
     }
     
-    /* File uploader */
-    [data-testid="stFileUploader"] {
-        border: 2px dashed #D1D5DB;
+    /* Regular Buttons - Light Background for Phase Headers */
+    .stButton>button:not([kind="primary"]) {
+        background: white !important;
+        color: #0F172A !important;
+        border: 1px solid #E2E8F0 !important;
         border-radius: 8px;
-        padding: 1.5rem;
-        background-color: #FAFBFC;
+        font-weight: 600;
+        padding: 0.75rem 1rem;
+        font-size: 0.9375rem;
+        transition: all 0.2s ease;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+    
+    .stButton>button:not([kind="primary"]):hover {
+        background: #F8FAFC !important;
+        color: #0F172A !important;
+        border-color: #CBD5E1 !important;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    }
+    
+    .stButton>button:not([kind="primary"]):active {
+        background: #F1F5F9 !important;
+        color: #0F172A !important;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    }
+    
+    /* File uploader - Elegant Card */
+    [data-testid="stFileUploader"] {
+        border: 2px dashed #E2E8F0;
+        border-radius: 16px;
+        padding: 3rem 2rem;
+        background: linear-gradient(180deg, #FAFBFC 0%, #F8FAFC 100%);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
     
     [data-testid="stFileUploader"]:hover {
-        border-color: #0066CC;
-        background-color: #F0F7FF;
+        border-color: #94A3B8;
+        background: white;
+        box-shadow: 
+            0 4px 12px rgba(0, 0, 0, 0.05),
+            0 2px 6px rgba(0, 0, 0, 0.03);
+        transform: translateY(-2px);
     }
     
-    /* Info boxes */
-    .info-box {
-        background-color: #F0F7FF;
-        border-left: 3px solid #0066CC;
-        padding: 1rem 1.25rem;
-        border-radius: 4px;
-        margin: 1rem 0;
+    /* Tables - Floating & Spacious */
+    .stDataFrame {
+        border: none !important;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 
+            0 1px 3px rgba(0, 0, 0, 0.05),
+            0 4px 12px rgba(0, 0, 0, 0.04);
+        animation: fadeInUp 0.7s ease-out;
+        background: white !important;
     }
     
-    /* Section dividers */
+    .stDataFrame thead {
+        background: #F8FAFC !important;
+        border-bottom: 2px solid #F1F5F9 !important;
+    }
+    
+    .stDataFrame thead th {
+        padding: 1.25rem 1rem !important;
+        font-weight: 600 !important;
+        color: #334155 !important;
+        font-size: 0.875rem !important;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    
+    .stDataFrame tbody tr {
+        border-bottom: 1px solid #F8FAFC !important;
+        transition: all 0.2s ease;
+        background: white !important;
+    }
+    
+    .stDataFrame tbody tr:hover {
+        background: #FAFBFC !important;
+    }
+    
+    .stDataFrame tbody td {
+        padding: 1rem !important;
+        color: #475569 !important;
+    }
+    
+    /* Data editor cells - ensure white backgrounds */
+    .stDataFrameResizable {
+        background: white !important;
+    }
+    
+    [data-testid="data-grid-canvas"] {
+        background: white !important;
+    }
+    
+    [data-testid="data-grid-canvas"] div {
+        color: #334155 !important;
+    }
+    
+    /* Section dividers - Ultra Subtle */
     .section-divider {
         height: 1px;
-        background: #E5E7EB;
-        margin: 2rem 0;
+        background: linear-gradient(90deg, 
+            transparent 0%,
+            #F1F5F9 20%,
+            #F1F5F9 80%,
+            transparent 100%
+        );
+        margin: 4rem 0;
         border: none;
+    }
+    
+    /* Custom Card Styles */
+    .wayve-card {
+        background: white;
+        border-radius: 20px;
+        padding: 2.5rem;
+        box-shadow: 
+            0 2px 8px rgba(0, 0, 0, 0.04),
+            0 8px 24px rgba(0, 0, 0, 0.06);
+        border: 1px solid rgba(226, 232, 240, 0.8);
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        animation: fadeInUp 0.6s ease-out;
+        margin: 2rem 0;
+    }
+    
+    .wayve-card:hover {
+        transform: translateY(-6px);
+        box-shadow: 
+            0 8px 24px rgba(0, 0, 0, 0.08),
+            0 20px 48px rgba(0, 0, 0, 0.08);
+    }
+    
+    .hero-section {
+        text-align: center;
+        padding: 5rem 2rem;
+        background: linear-gradient(180deg, 
+            rgba(248, 250, 252, 0) 0%,
+            rgba(248, 250, 252, 0.6) 50%,
+            rgba(248, 250, 252, 0) 100%
+        );
+        margin: -4rem -3rem 4rem -3rem;
+        animation: fadeIn 1s ease-out;
+    }
+    
+    .stat-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 2rem;
+        margin: 3rem 0;
+    }
+    
+    /* Progress indicators - Smooth */
+    .stProgress > div > div > div {
+        background: linear-gradient(90deg, #0F172A 0%, #475569 100%) !important;
+        border-radius: 8px;
+        transition: all 0.3s ease;
+    }
+    
+    .stProgress > div > div {
+        background: #F1F5F9 !important;
+        border-radius: 8px;
+        height: 8px !important;
     }
     
     /* Status indicators */
     .status-indicator {
         display: inline-block;
-        width: 8px;
-        height: 8px;
+        width: 10px;
+        height: 10px;
         border-radius: 50%;
-        margin-right: 0.5rem;
+        margin-right: 0.75rem;
+        box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+        animation: pulse 2s ease-in-out infinite;
+    }
+    
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.6; }
     }
     
     .status-success { background-color: #10B981; }
@@ -269,6 +513,156 @@ st.markdown("""
         visibility: visible;
         opacity: 1;
     }
+    
+    /* Expanders - Spacious Cards */
+    .streamlit-expanderHeader {
+        background: white !important;
+        border-radius: 12px;
+        padding: 1.25rem 1.5rem;
+        border: 1px solid #F1F5F9;
+        font-weight: 600;
+        color: #334155 !important;
+        transition: all 0.3s ease;
+    }
+    
+    .streamlit-expanderHeader:hover {
+        background: #FAFBFC !important;
+        border-color: #E2E8F0;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    }
+    
+    .streamlit-expanderContent {
+        background: white !important;
+        border: 1px solid #F1F5F9;
+        border-top: none;
+        border-radius: 0 0 12px 12px;
+        padding: 1.5rem;
+        color: #334155 !important;
+    }
+    
+    /* Text inputs - Clean & Spacious */
+    .stTextInput > div > div > input {
+        border: 2px solid #E2E8F0;
+        border-radius: 12px;
+        padding: 0.875rem 1rem;
+        font-size: 1rem;
+        transition: all 0.3s ease;
+        background: white;
+    }
+    
+    .stTextInput > div > div > input:focus {
+        border-color: #94A3B8;
+        box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.1);
+    }
+    
+    /* Select boxes */
+    .stSelectbox > div > div {
+        border: 2px solid #E2E8F0;
+        border-radius: 12px;
+        background: white;
+        transition: all 0.3s ease;
+    }
+    
+    .stSelectbox > div > div:hover {
+        border-color: #CBD5E1;
+    }
+    
+    /* Data editor - Modern */
+    .stDataFrameToolbar {
+        background: #F8FAFC !important;
+        border-radius: 12px 12px 0 0;
+        padding: 0.75rem;
+    }
+    
+    /* Caption text - Lighter */
+    .stCaption, .css-1v0mbdj {
+        color: #94A3B8 !important;
+        font-size: 0.9375rem !important;
+        line-height: 1.6 !important;
+        margin-top: 0.5rem !important;
+    }
+    
+    /* Success/Info/Warning/Error - Spacious */
+    .stAlert {
+        padding: 1.5rem 1.75rem;
+        border-radius: 12px;
+        border: none;
+        margin: 2rem 0;
+        animation: fadeInUp 0.5s ease-out;
+    }
+    
+    [data-baseweb="notification"] {
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    }
+    
+    /* Spinner - Elegant */
+    .stSpinner > div {
+        border-top-color: #0F172A !important;
+        border-width: 3px !important;
+    }
+    
+    /* Plotly charts - Clean borders */
+    .js-plotly-plot {
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+    }
+    
+    /* Column containers - Spacing */
+    [data-testid="column"] {
+        padding: 0.5rem;
+    }
+    
+    /* Markdown containers - Better spacing */
+    .element-container {
+        margin-bottom: 1rem;
+    }
+    
+    /* Background - Ultra subtle gradient */
+    .main {
+        background: linear-gradient(180deg, 
+            #FFFFFF 0%,
+            #FAFBFC 50%,
+            #FFFFFF 100%
+        );
+    }
+    
+    /* Fix potential contrast issues in default Streamlit elements */
+    /* Markdown text - ensure readable */
+    .stMarkdown p {
+        color: #334155;
+    }
+    
+    /* Labels - readable */
+    label {
+        color: #334155 !important;
+    }
+    
+    /* Code blocks */
+    code, pre {
+        background: #F8FAFC !important;
+        color: #0F172A !important;
+        border: 1px solid #E2E8F0;
+        border-radius: 6px;
+        padding: 0.25rem 0.5rem;
+    }
+    
+    /* Plotly chart text */
+    .plotly text {
+        fill: #334155 !important;
+    }
+    
+    /* Ensure selectbox options are readable */
+    [role="listbox"] [role="option"] {
+        background: white !important;
+        color: #334155 !important;
+    }
+    
+    [role="listbox"] [role="option"]:hover {
+        background: #F8FAFC !important;
+        color: #0F172A !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -283,12 +677,29 @@ st.set_page_config(
 )
 
 # ============================================
-# HEADER - Professional, minimal
+# HEADER - Wayve-Inspired Hero Section
 # ============================================
 st.markdown("""
-<div style="margin-bottom: 2rem;">
-    <h1 style="margin-bottom: 0.25rem;">Lynx Resource Planning</h1>
-    <p style="color: #6B7280; font-size: 0.95rem; margin: 0;">Intelligent skill-based resource allocation and capacity planning</p>
+<div class="hero-section">
+    <h1 style="
+        font-size: 3.5rem;
+        font-weight: 700;
+        color: #0F172A;
+        letter-spacing: -0.04em;
+        margin-bottom: 1.5rem;
+        line-height: 1.1;
+    ">Resource Allocation</h1>
+    <p style="
+        font-size: 1.25rem;
+        color: #64748B;
+        max-width: 700px;
+        margin: 0 auto 2rem auto;
+        line-height: 1.6;
+        font-weight: 400;
+    ">
+        Intelligent skill-based matching and capacity optimization<br/>
+        powered by advanced allocation algorithms
+    </p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -545,40 +956,43 @@ if "allocation_complete" not in st.session_state:
 # UPLOAD SCREEN (Before Allocation)
 # ============================================
 if not st.session_state.allocation_complete:
-    # Minimalist header
+    # Wayve-style section header
     st.markdown("""
-        <div style="margin-bottom: 3rem;">
-            <h1 style="
-                color: #0A0A0A;
-                font-size: 2rem;
-                font-weight: 700;
-                letter-spacing: -0.03em;
-                margin-bottom: 0.5rem;
-            ">Resource Allocation</h1>
-            <p style="
-                color: #6B7280;
-                font-size: 0.9375rem;
-                margin: 0;
-            ">Upload data and configure task requirements</p>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("""
-        <div style="margin-bottom: 2rem;">
-            <h3 style="
-                color: #1A1A1A;
-                font-size: 1.125rem;
+        <div style="margin-bottom: 4rem;">
+            <h2 style="
+                color: #0F172A;
+                font-size: 2.25rem;
                 font-weight: 600;
+                letter-spacing: -0.03em;
                 margin-bottom: 1rem;
-            ">Data Input</h3>
+            ">Data Upload</h2>
+            <p style="
+                color: #64748B;
+                font-size: 1.125rem;
+                margin: 0;
+                line-height: 1.6;
+                max-width: 600px;
+            ">Upload your task and employee data to begin the intelligent allocation process</p>
         </div>
     """, unsafe_allow_html=True)
     
-    col1, col2 = st.columns(2)
+    col1, col2 = st.columns(2, gap="large")
     with col1:
         st.markdown("""
-            <p style="color: #1A1A1A; font-weight: 600; font-size: 0.875rem; margin-bottom: 0.5rem;">Tasks</p>
-            <p style="color: #6B7280; font-size: 0.8125rem; margin-bottom: 0.75rem;">Task assignments and requirements</p>
+            <div class="wayve-card" style="padding: 2rem;">
+                <h3 style="
+                    color: #0F172A;
+                    font-weight: 600;
+                    font-size: 1.125rem;
+                    margin: 0 0 0.75rem 0;
+                ">Tasks Data</h3>
+                <p style="
+                    color: #64748B;
+                    font-size: 0.9375rem;
+                    margin: 0 0 1.5rem 0;
+                    line-height: 1.6;
+                ">Upload task assignments, requirements, and timelines</p>
+            </div>
         """, unsafe_allow_html=True)
         task_file = st.file_uploader(
             "Upload Tasks Excel File",
@@ -590,20 +1004,38 @@ if not st.session_state.allocation_complete:
         if task_file:
             st.markdown(f"""
                 <div style="
-                    padding: 0.5rem 0.75rem;
-                    background: #F0FDF4;
+                    padding: 1rem 1.25rem;
+                    background: linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%);
                     border: 1px solid #D1FAE5;
-                    border-radius: 6px;
-                    margin-top: 0.5rem;
+                    border-radius: 12px;
+                    margin-top: 1rem;
+                    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.1);
                 ">
-                    <p style="color: #065F46; font-size: 0.8125rem; margin: 0; font-weight: 500;">{task_file.name}</p>
+                    <p style="
+                        color: #065F46;
+                        font-size: 0.9375rem;
+                        margin: 0;
+                        font-weight: 600;
+                    ">✓ {task_file.name}</p>
                 </div>
             """, unsafe_allow_html=True)
     
     with col2:
         st.markdown("""
-            <p style="color: #1A1A1A; font-weight: 600; font-size: 0.875rem; margin-bottom: 0.5rem;">People</p>
-            <p style="color: #6B7280; font-size: 0.8125rem; margin-bottom: 0.75rem;">Employee skills and capacity</p>
+            <div class="wayve-card" style="padding: 2rem;">
+                <h3 style="
+                    color: #0F172A;
+                    font-weight: 600;
+                    font-size: 1.125rem;
+                    margin: 0 0 0.75rem 0;
+                ">People Data</h3>
+                <p style="
+                    color: #64748B;
+                    font-size: 0.9375rem;
+                    margin: 0 0 1.5rem 0;
+                    line-height: 1.6;
+                ">Upload employee skills, levels, and capacity information</p>
+            </div>
         """, unsafe_allow_html=True)
         people_file = st.file_uploader(
             "Upload People Excel File",
@@ -615,13 +1047,19 @@ if not st.session_state.allocation_complete:
         if people_file:
             st.markdown(f"""
                 <div style="
-                    padding: 0.5rem 0.75rem;
-                    background: #F0FDF4;
+                    padding: 1rem 1.25rem;
+                    background: linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%);
                     border: 1px solid #D1FAE5;
-                    border-radius: 6px;
-                    margin-top: 0.5rem;
+                    border-radius: 12px;
+                    margin-top: 1rem;
+                    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.1);
                 ">
-                    <p style="color: #065F46; font-size: 0.8125rem; margin: 0; font-weight: 500;">{people_file.name}</p>
+                    <p style="
+                        color: #065F46;
+                        font-size: 0.9375rem;
+                        margin: 0;
+                        font-weight: 600;
+                    ">✓ {people_file.name}</p>
                 </div>
             """, unsafe_allow_html=True)
     
@@ -893,116 +1331,146 @@ if not st.session_state.allocation_complete:
     st.session_state.people_raw = people_raw
     
     # ============================================
-    # START ALLOCATION BUTTON - MINIMALIST DESIGN
+    # START ALLOCATION BUTTON - WAYVE STYLE
     # ============================================
     st.markdown("""
         <div style="
-            margin: 4rem 0 3rem 0;
-            padding: 3rem 0;
-            border-top: 1px solid #E5E7EB;
-            border-bottom: 1px solid #E5E7EB;
+            margin: 6rem 0;
+            padding: 5rem 0;
+            background: linear-gradient(180deg,
+                rgba(248, 250, 252, 0) 0%,
+                rgba(248, 250, 252, 0.8) 30%,
+                rgba(248, 250, 252, 0.8) 70%,
+                rgba(248, 250, 252, 0) 100%
+            );
         ">
-            <div style="text-align: center; max-width: 600px; margin: 0 auto;">
+            <div style="text-align: center; max-width: 700px; margin: 0 auto;">
                 <h2 style="
-                    color: #0A0A0A;
-                    font-size: 1.5rem;
-                    font-weight: 600;
-                    letter-spacing: -0.02em;
-                    margin-bottom: 0.75rem;
-                ">Resource Allocation</h2>
+                    color: #0F172A;
+                    font-size: 2.5rem;
+                    font-weight: 700;
+                    letter-spacing: -0.04em;
+                    margin-bottom: 1.5rem;
+                    line-height: 1.2;
+                ">Ready to allocate resources</h2>
                 <p style="
-                    color: #6B7280;
-                    font-size: 0.9375rem;
-                    line-height: 1.6;
-                    margin-bottom: 2rem;
+                    color: #64748B;
+                    font-size: 1.125rem;
+                    line-height: 1.8;
+                    margin-bottom: 3rem;
+                    font-weight: 400;
                 ">
-                    Intelligent skill matching and capacity optimization engine
+                    Our intelligent engine will analyze skills, match employees to tasks,
+                    and optimize assignments based on capacity and risk factors
                 </p>
             </div>
         </div>
     """, unsafe_allow_html=True)
     
-    col_btn1, col_btn2, col_btn3 = st.columns([1, 1.5, 1])
+    col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
     with col_btn2:
         run_allocation = st.button(
             "Start Allocation",
             type="primary",
             use_container_width=True,
-            help="Begin resource allocation analysis"
+            help="Begin intelligent resource allocation"
         )
     
     if run_allocation:
-        # Minimalist loading state
+        # Wayve-style loading state
         import time
         
         loading_container = st.empty()
         
         steps = [
-            ("Analyzing requirements", 0.2),
-            ("Matching resources", 0.5),
-            ("Optimizing assignments", 0.7),
-            ("Calculating metrics", 0.9),
-            ("Finalizing", 1.0)
+            ("Analyzing skill requirements", 0.2),
+            ("Matching employees to tasks", 0.5),
+            ("Optimizing resource allocation", 0.7),
+            ("Calculating risk factors", 0.9),
+            ("Finalizing assignments", 1.0)
         ]
         
         for step_text, progress_val in steps:
             loading_container.markdown(f"""
                 <div style="
                     text-align: center;
-                    padding: 2.5rem 2rem;
-                    max-width: 500px;
-                    margin: 2rem auto;
+                    padding: 4rem 3rem;
+                    max-width: 700px;
+                    margin: 3rem auto;
                 ">
                     <div style="
                         width: 100%;
-                        height: 2px;
-                        background: #F3F4F6;
-                        border-radius: 1px;
+                        height: 4px;
+                        background: linear-gradient(90deg,
+                            #F8FAFC 0%,
+                            #F1F5F9 50%,
+                            #F8FAFC 100%
+                        );
+                        border-radius: 2px;
                         overflow: hidden;
-                        margin-bottom: 1.5rem;
+                        margin-bottom: 2.5rem;
                     ">
                         <div style="
                             width: {progress_val * 100}%;
                             height: 100%;
-                            background: #0A0A0A;
-                            transition: width 0.3s ease;
+                            background: linear-gradient(90deg, #0F172A 0%, #334155 100%);
+                            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+                            box-shadow: 0 0 12px rgba(15, 23, 42, 0.3);
                         "></div>
                     </div>
                     <p style="
-                        color: #6B7280;
-                        font-size: 0.875rem;
+                        color: #475569;
+                        font-size: 1.125rem;
                         font-weight: 500;
                         margin: 0;
-                        letter-spacing: 0.01em;
+                        letter-spacing: -0.01em;
                     ">{step_text}</p>
                 </div>
             """, unsafe_allow_html=True)
-            time.sleep(0.3)
+            time.sleep(0.4)
         
         st.session_state.allocation_complete = True
         loading_container.empty()
         
-        # Minimal success state
+        # Elegant success state
         st.markdown("""
-            <div style="
+            <div class="wayve-card" style="
                 text-align: center;
-                padding: 1.5rem;
-                max-width: 500px;
-                margin: 2rem auto;
+                padding: 3rem 2rem;
+                max-width: 600px;
+                margin: 3rem auto;
+                background: linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%);
                 border: 1px solid #D1FAE5;
-                background: #F0FDF4;
-                border-radius: 8px;
             ">
-                <p style="
+                <div style="
+                    width: 64px;
+                    height: 64px;
+                    background: white;
+                    border-radius: 50%;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin-bottom: 1.5rem;
+                    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
+                ">
+                    <span style="color: #10B981; font-size: 2rem; font-weight: 700;">✓</span>
+                </div>
+                <h3 style="
                     color: #065F46;
-                    font-size: 0.9375rem;
+                    font-size: 1.5rem;
                     font-weight: 600;
+                    margin: 0 0 0.5rem 0;
+                    letter-spacing: -0.02em;
+                ">Allocation Complete</h3>
+                <p style="
+                    color: #059669;
+                    font-size: 1rem;
                     margin: 0;
-                ">Allocation Complete</p>
+                ">Redirecting to results</p>
             </div>
         """, unsafe_allow_html=True)
         
-        time.sleep(0.6)
+        time.sleep(0.8)
         st.rerun()
     
     # Minimal instruction
@@ -1422,21 +1890,29 @@ with st.sidebar:
         st.write(f"**Employees with Assignments:** {len(assign_df[assign_df['assignee'] != 'UNASSIGNED']['assignee'].unique())}")
 
 # ============================================
-# CREATE TABS (Minimalist Design)
+# CREATE TABS (Wayve-Inspired Spacious Design)
 # ============================================
 st.markdown("""
     <div style="
-        margin: 4rem 0 2rem 0;
-        padding-top: 3rem;
-        border-top: 1px solid #E5E7EB;
+        margin: 6rem 0 3rem 0;
+        text-align: center;
     ">
         <h2 style="
-            color: #0A0A0A;
-            font-size: 1.5rem;
-            font-weight: 600;
-            letter-spacing: -0.02em;
-            margin-bottom: 2rem;
+            color: #0F172A;
+            font-size: 2.25rem;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            margin-bottom: 1rem;
         ">Allocation Results</h2>
+        <p style="
+            color: #64748B;
+            font-size: 1.0625rem;
+            margin: 0 auto 3rem auto;
+            max-width: 600px;
+            line-height: 1.7;
+        ">
+            Explore your optimized resource allocation across timelines, assignments, and capacity analysis
+        </p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -1446,8 +1922,23 @@ tabs = st.tabs(["Timeline", "Assignments", "Workload", "Details"])
 # TAB 1: GANTT CHART (Primary View)
 # ============================================
 with tabs[0]:
-    st.header("Project Timeline")
-    st.caption("Hierarchical view with phases and tasks")
+    st.markdown("""
+        <div style="margin-bottom: 3rem;">
+            <h3 style="
+                color: #0F172A;
+                font-size: 1.75rem;
+                font-weight: 600;
+                letter-spacing: -0.02em;
+                margin-bottom: 0.75rem;
+            ">Project Timeline</h3>
+            <p style="
+                color: #64748B;
+                font-size: 1rem;
+                margin: 0;
+                line-height: 1.6;
+            ">Hierarchical view with phase grouping and task scheduling</p>
+        </div>
+    """, unsafe_allow_html=True)
     
     # Check if phase column exists in assign_df
     has_phase_col = "phase" in assign_df.columns and assign_df["phase"].notna().any()
@@ -2153,7 +2644,23 @@ with tabs[0]:
 # TAB 2: ALLOCATION RESULTS
 # ============================================
 with tabs[1]:
-    st.header("Allocation Results")
+    st.markdown("""
+        <div style="margin-bottom: 3rem;">
+            <h3 style="
+                color: #0F172A;
+                font-size: 1.75rem;
+                font-weight: 600;
+                letter-spacing: -0.02em;
+                margin-bottom: 0.75rem;
+            ">Task Assignments</h3>
+            <p style="
+                color: #64748B;
+                font-size: 1rem;
+                margin: 0;
+                line-height: 1.6;
+            ">Detailed breakdown of resource allocation and risk assessment</p>
+        </div>
+    """, unsafe_allow_html=True)
     
     # Summary metrics
     col1, col2, col3, col4 = st.columns(4)
@@ -2320,8 +2827,23 @@ with tabs[1]:
 # TAB 3: WORKLOAD ANALYSIS
 # ============================================
 with tabs[2]:
-    st.header("Workload Analysis")
-    st.caption("Resource utilization and capacity planning")
+    st.markdown("""
+        <div style="margin-bottom: 3rem;">
+            <h3 style="
+                color: #0F172A;
+                font-size: 1.75rem;
+                font-weight: 600;
+                letter-spacing: -0.02em;
+                margin-bottom: 0.75rem;
+            ">Capacity Analysis</h3>
+            <p style="
+                color: #64748B;
+                font-size: 1rem;
+                margin: 0;
+                line-height: 1.6;
+            ">Resource utilization trends and capacity planning insights</p>
+        </div>
+    """, unsafe_allow_html=True)
     
     w_start = min(assign_df["planned_start"])
     w_end = max(assign_df["planned_finish"])
@@ -2466,7 +2988,23 @@ with tabs[2]:
 # TAB 4: TASK DETAILS
 # ============================================
 with tabs[3]:
-    st.header("Task Details & Analysis")
+    st.markdown("""
+        <div style="margin-bottom: 3rem;">
+            <h3 style="
+                color: #0F172A;
+                font-size: 1.75rem;
+                font-weight: 600;
+                letter-spacing: -0.02em;
+                margin-bottom: 0.75rem;
+            ">Task Analysis</h3>
+            <p style="
+                color: #64748B;
+                font-size: 1rem;
+                margin: 0;
+                line-height: 1.6;
+            ">In-depth view of individual task assignments and risk factors</p>
+        </div>
+    """, unsafe_allow_html=True)
     
     selected = st.selectbox(
         "Select Task",
