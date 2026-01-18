@@ -566,8 +566,8 @@ with tabs[0]:
     
     # Load and validate data
     try:
-        tasks_raw = pd.read_excel(task_file)
-        people_raw = pd.read_excel(people_file)
+        tasks_raw = pd.read_excel(task_file, sheet_name="Sheet1")  # Always read Sheet1
+        people_raw = pd.read_excel(people_file, sheet_name="Sheet1")  # Always read Sheet1
     except Exception as e:
         st.error(f"Error reading files: {str(e)}")
         st.stop()
@@ -1730,11 +1730,53 @@ with tabs[2]:
                 return True
         return False
     
+    def find_employees_for_task(required_skills_str: str, assigned_tasks_df, max_results: int = 3):
+        """Find specific employees who can handle this task, sorted by current workload"""
+        if not required_skills_str or str(required_skills_str).strip() == "":
+            return []
+        
+        # Parse required skills
+        required_skills = [s.strip() for s in str(required_skills_str).split(",") if s.strip()]
+        if not required_skills:
+            return []
+        
+        # Find employees with all required skills
+        matching_employees = []
+        for emp_id in employees:
+            has_all = True
+            emp_skills = []
+            for skill in required_skills:
+                skill_row = people_raw[(people_raw["employee_id"] == emp_id) & (people_raw["skill"] == skill)]
+                if skill_row.empty:
+                    has_all = False
+                    break
+                else:
+                    proficiency = skill_row.iloc[0].get("proficiency", 0)
+                    emp_skills.append({"skill": skill, "proficiency": proficiency})
+            
+            if has_all:
+                # Calculate current workload for this employee
+                emp_assigned_tasks = assigned_tasks_df[assigned_tasks_df["assignee"] == emp_id]
+                current_workload = len(emp_assigned_tasks)
+                
+                matching_employees.append({
+                    "employee_id": emp_id,
+                    "skills": emp_skills,
+                    "current_workload": current_workload
+                })
+        
+        # Sort by workload (lowest first = more capacity)
+        matching_employees.sort(key=lambda x: x["current_workload"])
+        
+        return matching_employees[:max_results]
+    
     # Analyze unassigned tasks by urgency
     urgent_tasks = []
     near_term_tasks = []
     future_tasks = []
-    current_delay_days = 0
+    current_delay_days = 0  # Total delay including resolution time (for backwards compatibility)
+    actual_days_overdue = 0  # NEW: Just how late we are NOW
+    overdue_tasks = []  # NEW: Track overdue tasks separately
     projected_delay_days = 0
     recoverable_tasks = []
     will_be_delayed_tasks = []
@@ -1774,7 +1816,10 @@ with tabs[2]:
         # Categorize by urgency
         if days_until_due < 0:
             # Already past due
-            current_delay_days = max(current_delay_days, abs(days_until_due) + resolution_time)
+            days_overdue = abs(days_until_due)
+            actual_days_overdue = max(actual_days_overdue, days_overdue)  # NEW: Track actual delay
+            current_delay_days = max(current_delay_days, days_overdue + resolution_time)  # Total impact
+            overdue_tasks.append({**task.to_dict(), "action_type": action_type, "resolution_time": resolution_time, "days_until_due": days_until_due, "days_overdue": days_overdue})  # NEW
             urgent_tasks.append({**task.to_dict(), "action_type": action_type, "resolution_time": resolution_time, "days_until_due": days_until_due})
         elif days_until_due <= urgent_window_days:
             # Urgent: due within 14 weeks
@@ -1913,59 +1958,80 @@ with tabs[2]:
         with rec_col2:
             st.markdown("**Action Items:**")
             
-            # Urgency-based recommendations
-            if total_urgent > 0:
-                if current_delay_days > 0:
-                    st.error(f"🚨 **Already late**: {current_delay_days:.0f} days delay. {total_urgent} tasks due within 14 weeks are unassigned.")
-                elif total_will_be_delayed > 0:
-                    st.warning(f"⚠️ **Will be delayed**: {total_will_be_delayed} tasks will be delayed by {projected_delay_days:.0f} days even with immediate action.")
-                else:
-                    st.warning(f"⚠️ **Urgent action needed**: {total_urgent} tasks due within 14 weeks are unassigned.")
+            # === SIMPLIFIED 2-ROW FORMAT ===
             
-            # Recovery recommendations - break down by action type and urgency
-            if total_recoverable > 0:
-                # Separate recoverable tasks by action type
-                recoverable_by_allocation = [t for t in recoverable_tasks if t.get("action_type") == "allocate"]
-                recoverable_by_hiring = [t for t in recoverable_tasks if t.get("action_type") == "hire"]
+            # ROW 1: CURRENT STATE (What's happening NOW)
+            if actual_days_overdue > 0:
+                overdue_count = len(overdue_tasks)
+                overdue_allocate = sum(1 for t in overdue_tasks if t.get("action_type") == "allocate")
+                overdue_hire = sum(1 for t in overdue_tasks if t.get("action_type") == "hire")
                 
-                # Tasks that can be saved by allocation (immediate/urgent)
-                if recoverable_by_allocation:
-                    allocation_save_count = len(recoverable_by_allocation)
-                    min_days_allocation = min([t.get("days_to_act", 0) for t in recoverable_by_allocation], default=0)
-                    # Check how many are due very soon (need immediate allocation)
-                    immediate_allocation = [t for t in recoverable_by_allocation if t.get("days_until_due", 999) <= immediate_window_days]
-                    if immediate_allocation:
-                        immediate_count = len(immediate_allocation)
-                        st.warning(f"⚡ **Allocate within {min_days_allocation:.0f} days**: {immediate_count} task{'s' if immediate_count > 1 else ''} due within 14 days can be saved by reallocating existing employees.")
-                    if allocation_save_count > len(immediate_allocation):
-                        remaining = allocation_save_count - len(immediate_allocation)
-                        st.info(f"💡 **Allocate within {min_days_allocation:.0f} days**: {remaining} additional task{'s' if remaining > 1 else ''} can be saved by reallocating.")
+                # Build current state message
+                current_msg = f"🚨 **Currently {actual_days_overdue:.0f} days overdue** ({overdue_count} task{'s' if overdue_count > 1 else ''}). "
                 
-                # Tasks that can be saved by hiring (longer term)
-                if recoverable_by_hiring:
-                    hiring_save_count = len(recoverable_by_hiring)
-                    min_days_hiring = min([t.get("days_to_act", 0) for t in recoverable_by_hiring], default=0)
-                    # Only show hiring recommendation if there's enough time
-                    if min_days_hiring >= hiring_time_days - 10:  # At least 30 days to act
-                        st.info(f"💡 **Hire within {min_days_hiring:.0f} days**: {hiring_save_count} task{'s' if hiring_save_count > 1 else ''} due later can be saved by hiring new employees.")
+                # Add action with employee names if reallocation possible
+                if overdue_allocate > 0:
+                    # Get top employee suggestions
+                    overdue_reallocate_tasks = [t for t in overdue_tasks if t.get("action_type") == "allocate"]
+                    employee_names = []
+                    for task in overdue_reallocate_tasks[:3]:
+                        missing_skills = str(task.get("missing_skills", "")).strip()
+                        candidates = find_employees_for_task(missing_skills, assigned_df, max_results=1)
+                        if candidates:
+                            employee_names.append(candidates[0]["employee_id"])
+                    
+                    if employee_names:
+                        emp_list = ", ".join(employee_names[:3])
+                        current_msg += f"**Action:** Reallocate to {emp_list} (7 days to recover)."
                     else:
-                        st.warning(f"⚠️ **Hiring needed but may be too late**: {hiring_save_count} task{'s' if hiring_save_count > 1 else ''} require hiring, but only {min_days_hiring:.0f} days available.")
+                        current_msg += f"**Action:** Reallocate from existing team (7 days to recover)."
+                    
+                    if overdue_hire > 0:
+                        current_msg += f" {overdue_hire} task{'s' if overdue_hire > 1 else ''} require{'s' if overdue_hire == 1 else ''} hiring (40 days)."
+                else:
+                    current_msg += f"**Action:** Start hiring immediately (40 days to recover)."
+                
+                # Add total impact
+                current_msg += f" **Total impact: {current_delay_days:.0f} days late.**"
+                
+                st.error(current_msg)
             
-            # Skill gaps summary
-            if sorted_missing_skills:
-                total_skill_gaps = sum(all_missing_skills.values())
-                if allocation_needed > 0 and hiring_needed > 0:
-                    st.info(f"📋 **Resource needs**: {allocation_needed} tasks can be allocated, {hiring_needed} tasks require hiring.")
-                elif allocation_needed > 0:
-                    st.info(f"📋 **Allocation needed**: {allocation_needed} tasks can be assigned by reallocating existing employees.")
-                elif hiring_needed > 0:
-                    st.info(f"📋 **Hiring needed**: {hiring_needed} tasks require hiring new employees with specific skills.")
-            
-            # Status-specific messages
-            if project_status == "Critical":
-                st.error(f"🔴 **Critical**: Immediate action required to prevent project failure.")
-            elif project_status == "At Risk":
-                st.warning(f"🟠 **At Risk**: Take action within 7-14 days to stay on track.")
+            # ROW 2: UPCOMING PREDICTION (What's about to happen)
+            upcoming_urgent = total_urgent - len(overdue_tasks) if actual_days_overdue > 0 else total_urgent
+            if upcoming_urgent > 0:
+                # Count allocation vs hiring for upcoming tasks
+                upcoming_tasks = [t for t in urgent_tasks if t.get("days_until_due", 0) >= 0][:upcoming_urgent]
+                upcoming_allocate = sum(1 for t in upcoming_tasks if t.get("action_type") == "allocate")
+                upcoming_hire = sum(1 for t in upcoming_tasks if t.get("action_type") == "hire")
+                
+                # Build prediction message
+                prediction_msg = f"⚠️ **Upcoming risk:** {upcoming_urgent} task{'s' if upcoming_urgent > 1 else ''} due within 14 weeks {'are' if upcoming_urgent > 1 else 'is'} unassigned. "
+                
+                # Add action with employee names if reallocation possible
+                if upcoming_allocate > 0:
+                    # Get top employee suggestions for upcoming tasks
+                    upcoming_reallocate_tasks = [t for t in upcoming_tasks if t.get("action_type") == "allocate"]
+                    employee_names = []
+                    for task in upcoming_reallocate_tasks[:3]:
+                        missing_skills = str(task.get("missing_skills", "")).strip()
+                        candidates = find_employees_for_task(missing_skills, assigned_df, max_results=1)
+                        if candidates:
+                            employee_names.append(candidates[0]["employee_id"])
+                    
+                    if employee_names:
+                        emp_list = ", ".join(set(employee_names[:3]))  # Remove duplicates
+                        prediction_msg += f"**Action:** Reallocate to {emp_list} within 7 days."
+                    else:
+                        prediction_msg += f"**Action:** Reallocate {upcoming_allocate} task{'s' if upcoming_allocate > 1 else ''} within 7 days."
+                    
+                    if upcoming_hire > 0:
+                        prediction_msg += f" {upcoming_hire} task{'s' if upcoming_hire > 1 else ''} require{'s' if upcoming_hire == 1 else ''} hiring."
+                else:
+                    prediction_msg += f"**Action:** Start hiring process now (40 days lead time)."
+                
+                st.warning(prediction_msg)
+            elif not actual_days_overdue and total_urgent == 0:
+                st.success("✅ **All tasks within 14 weeks are assigned.** Project on track.")
     else:
         st.success("✅ **All tasks assigned!** Project is on track with full resource allocation.")
 
