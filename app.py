@@ -521,14 +521,19 @@ if 'assign_df' in locals():
                 st.sidebar.markdown(f"- {risk}: {count}")
 
 # ============================================
-# MAIN TABS
+# SESSION STATE FOR INTERACTIVE FLOW
 # ============================================
-tabs = st.tabs(["Data Input", "Allocation Results", "Gantt Chart", "Workload Analysis", "Task Details"])
+if "allocation_complete" not in st.session_state:
+    st.session_state.allocation_complete = False
 
 # ============================================
-# TAB 1: DATA INPUT
+# UPLOAD SCREEN (Before Allocation)
 # ============================================
-with tabs[0]:
+if not st.session_state.allocation_complete:
+    st.markdown("### Resource Allocation System")
+    st.markdown("Upload your data files to begin the allocation process")
+    st.markdown("---")
+    
     st.header("Data Input & Configuration")
     
     st.subheader("Upload Data Templates")
@@ -796,6 +801,67 @@ with tabs[0]:
         with st.expander("Preview: People Data", expanded=False):
             st.dataframe(people_raw.head(10), use_container_width=True)
             st.caption(f"Total: {len(people_raw)} skill records")
+    
+    # Store data in session state
+    st.session_state.tasks_raw = tasks_raw
+    st.session_state.people_raw = people_raw
+    
+    # ============================================
+    # START ALLOCATION BUTTON
+    # ============================================
+    st.markdown("---")
+    st.markdown("### Run Resource Allocation")
+    st.markdown("Analyze skills, capacity, and assign tasks to employees based on intelligent matching algorithms.")
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
+    with col_btn2:
+        run_allocation = st.button(
+            "Start Allocation",
+            type="primary",
+            use_container_width=True,
+            help="Begin the resource allocation process"
+        )
+    
+    if run_allocation:
+        # Professional loading UI
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        import time
+        steps = [
+            ("Analyzing skill requirements", 0.2),
+            ("Matching employees to tasks", 0.5),
+            ("Optimizing assignments", 0.7),
+            ("Calculating risk scores", 0.9),
+            ("Finalizing allocation", 1.0)
+        ]
+        
+        for step_text, progress in steps:
+            status_text.text(step_text + "...")
+            progress_bar.progress(progress)
+            time.sleep(0.3)
+        
+        st.session_state.allocation_complete = True
+        status_text.empty()
+        progress_bar.empty()
+        st.rerun()
+    
+    # Stop here until allocation is run
+    st.info("Click 'Start Allocation' to begin the process")
+    st.stop()
+
+# ============================================
+# LOAD DATA FROM SESSION STATE
+# ============================================
+tasks_raw = st.session_state.get("tasks_raw")
+people_raw = st.session_state.get("people_raw")
+
+if tasks_raw is None or people_raw is None:
+    st.error("Data not found. Please upload files and run allocation again.")
+    st.session_state.allocation_complete = False
+    st.rerun()
 
 # ============================================
 # BUILD TASK-SKILL DATA
@@ -1188,179 +1254,18 @@ with st.sidebar:
         st.write(f"**Employees with Assignments:** {len(assign_df[assign_df['assignee'] != 'UNASSIGNED']['assignee'].unique())}")
 
 # ============================================
-# TAB 2: ALLOCATION RESULTS
+# CREATE TABS (Gantt Chart First)
 # ============================================
-with tabs[1]:
-    st.header("Allocation Results")
-    
-    # Summary metrics
-    col1, col2, col3, col4 = st.columns(4)
-    
-    total_tasks = len(assign_df)
-    assigned = len(assign_df[assign_df["assignee"] != "UNASSIGNED"])
-    unassigned = total_tasks - assigned
-    
-    with col1:
-        st.metric("Total Tasks", total_tasks)
-    with col2:
-        st.metric("Assigned", assigned, f"{assigned/total_tasks*100:.0f}%")
-    with col3:
-        st.metric("Unassigned", unassigned, f"-{unassigned/total_tasks*100:.0f}%")
-    with col4:
-        avg_risk = assign_df["overall_risk"].mean()
-        st.metric("Avg Risk Score", f"{avg_risk:.1f}", risk_band(avg_risk))
-    
-    st.markdown("---")
-    
-    # Risk distribution chart - Wayve colors
-    risk_counts = assign_df["risk_band"].value_counts().reindex(["Low", "Medium", "High", "Critical"], fill_value=0)
-    
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        fig_risk = px.bar(
-            x=risk_counts.index,
-            y=risk_counts.values,
-            color=risk_counts.index,
-            color_discrete_map={
-                "Low": "#10B981",
-                "Medium": "#F59E0B",
-                "High": "#EF4444",
-                "Critical": "#DC2626"
-            },
-            labels={"x": "Risk Level", "y": "Number of Tasks"},
-            title="Risk Distribution"
-        )
-        fig_risk.update_layout(
-            showlegend=False, 
-            height=300,
-            plot_bgcolor='white',
-            paper_bgcolor='white',
-            font=dict(family="Inter, sans-serif", size=12)
-        )
-        st.plotly_chart(fig_risk, use_container_width=True)
-    
-    with col2:
-        st.markdown("### Risk Breakdown")
-        for risk in ["Low", "Medium", "High", "Critical"]:
-            count = risk_counts.get(risk, 0)
-            pct = (count / total_tasks * 100) if total_tasks > 0 else 0
-            st.markdown(f"**{risk}**: {count} ({pct:.1f}%)")
-    
-    st.markdown("---")
-    
-    # Filter and sort options
-    has_phase_col = "phase" in assign_df.columns and assign_df["phase"].notna().any()
-    
-    if has_phase_col:
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            filter_risk = st.multiselect(
-                "Filter by Risk",
-                options=["Low", "Medium", "High", "Critical"],
-                default=["Low", "Medium", "High", "Critical"],
-                key="alloc_filter_risk_phase"
-            )
-        with col2:
-            filter_assignee = st.multiselect(
-                "Filter by Assignee",
-                options=sorted(assign_df["assignee"].unique().tolist()),
-                default=sorted(assign_df["assignee"].unique().tolist()),
-                key="alloc_filter_assignee_phase"
-            )
-        with col3:
-            filter_phase = st.multiselect(
-                "Filter by Phase",
-                options=sorted(assign_df["phase"].dropna().unique().tolist()),
-                default=sorted(assign_df["phase"].dropna().unique().tolist()),
-                key="alloc_filter_phase"
-            )
-        with col4:
-            sort_by = st.selectbox(
-                "Sort by",
-                options=["Risk Band", "Priority", "Phase", "Task ID", "Assignee"],
-                index=0
-            )
-        
-        # Filter dataframe
-        filtered_df = assign_df[
-            (assign_df["risk_band"].isin(filter_risk)) &
-            (assign_df["assignee"].isin(filter_assignee)) &
-            (assign_df["phase"].isin(filter_phase))
-        ]
-    else:
-        col1, col2, col3 = st.columns(3)
-    with col1:
-        filter_risk = st.multiselect(
-            "Filter by Risk",
-            options=["Low", "Medium", "High", "Critical"],
-            default=["Low", "Medium", "High", "Critical"],
-            key="alloc_filter_risk_no_phase"
-        )
-    with col2:
-        filter_assignee = st.multiselect(
-            "Filter by Assignee",
-            options=sorted(assign_df["assignee"].unique().tolist()),
-            default=sorted(assign_df["assignee"].unique().tolist()),
-            key="alloc_filter_assignee_no_phase"
-        )
-    with col3:
-        sort_by = st.selectbox(
-            "Sort by",
-            options=["Risk Band", "Priority", "Task ID", "Assignee"],
-            index=0
-        )
-    
-    # Filter dataframe
-    filtered_df = assign_df[
-        (assign_df["risk_band"].isin(filter_risk)) &
-        (assign_df["assignee"].isin(filter_assignee))
-    ]
-    
-    # Sort
-    if sort_by == "Risk Band":
-        risk_order = {"Low": 0, "Medium": 1, "High": 2, "Critical": 3}
-        filtered_df = filtered_df.copy()
-        filtered_df["_risk_order"] = filtered_df["risk_band"].map(risk_order)
-        filtered_df = filtered_df.sort_values(["_risk_order", "priority"]).drop(columns=["_risk_order"])
-    elif sort_by == "Priority":
-        prio_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
-        filtered_df = filtered_df.copy()
-        filtered_df["_prio_order"] = filtered_df["priority"].astype(str).str.lower().map(prio_order).fillna(99)
-        filtered_df = filtered_df.sort_values(["_prio_order", "risk_band"]).drop(columns=["_prio_order"])
-    elif sort_by == "Phase" and has_phase_col:
-        filtered_df = filtered_df.sort_values(["phase", "risk_band"])
-    elif sort_by == "Task ID":
-        filtered_df = filtered_df.sort_values("task_id")
-    else:
-        filtered_df = filtered_df.sort_values(["assignee", "risk_band"])
-    
-    # Display table with styling
-    display_cols = [
-        "task_id", "task_name", "department", "phase", "priority", "assignee", "work_size",
-        "risk_band", "skill_risk", "schedule_risk", "expected_delay_days"
-    ]
-    # Remove phase if not available
-    if "phase" not in filtered_df.columns:
-        display_cols = [c for c in display_cols if c != "phase"]
-    
-    st.dataframe(
-        filtered_df[display_cols],
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "risk_band": st.column_config.TextColumn("Risk", width="small"),
-            "skill_risk": st.column_config.NumberColumn("Skill Risk", format="%.0f", width="small"),
-            "schedule_risk": st.column_config.NumberColumn("Schedule Risk", format="%.0f", width="small"),
-            "expected_delay_days": st.column_config.NumberColumn("Delay (days)", format="%d", width="small"),
-        }
-    )
+st.markdown("---")
+st.markdown("## Allocation Results")
+tabs = st.tabs(["Gantt Chart", "Allocation Results", "Workload Analysis", "Task Details"])
 
 # ============================================
-# TAB 3: GANTT CHART
+# TAB 1: GANTT CHART (Primary View)
 # ============================================
-with tabs[2]:
-    st.header("📊 Gantt Chart - Hierarchical View")
-    st.caption("✨ NEW: Phases → Tasks with improved layout and left-aligned text")
+with tabs[0]:
+    st.header("Project Timeline")
+    st.caption("Hierarchical view with phases and tasks")
     
     # Check if phase column exists in assign_df
     has_phase_col = "phase" in assign_df.columns and assign_df["phase"].notna().any()
@@ -2036,9 +1941,179 @@ with tabs[2]:
         st.success("✅ **All tasks assigned!** Project is on track with full resource allocation.")
 
 # ============================================
-# TAB 4: WORKLOAD ANALYSIS
+
+
 # ============================================
-with tabs[3]:
+# TAB 2: ALLOCATION RESULTS
+# ============================================
+with tabs[1]:
+    st.header("Allocation Results")
+    
+    # Summary metrics
+    col1, col2, col3, col4 = st.columns(4)
+    
+    total_tasks = len(assign_df)
+    assigned = len(assign_df[assign_df["assignee"] != "UNASSIGNED"])
+    unassigned = total_tasks - assigned
+    
+    with col1:
+        st.metric("Total Tasks", total_tasks)
+    with col2:
+        st.metric("Assigned", assigned, f"{assigned/total_tasks*100:.0f}%")
+    with col3:
+        st.metric("Unassigned", unassigned, f"-{unassigned/total_tasks*100:.0f}%")
+    with col4:
+        avg_risk = assign_df["overall_risk"].mean()
+        st.metric("Avg Risk Score", f"{avg_risk:.1f}", risk_band(avg_risk))
+    
+    st.markdown("---")
+    
+    # Risk distribution chart - Wayve colors
+    risk_counts = assign_df["risk_band"].value_counts().reindex(["Low", "Medium", "High", "Critical"], fill_value=0)
+    
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        fig_risk = px.bar(
+            x=risk_counts.index,
+            y=risk_counts.values,
+            color=risk_counts.index,
+            color_discrete_map={
+                "Low": "#10B981",
+                "Medium": "#F59E0B",
+                "High": "#EF4444",
+                "Critical": "#DC2626"
+            },
+            labels={"x": "Risk Level", "y": "Number of Tasks"},
+            title="Risk Distribution"
+        )
+        fig_risk.update_layout(
+            showlegend=False, 
+            height=300,
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            font=dict(family="Inter, sans-serif", size=12)
+        )
+        st.plotly_chart(fig_risk, use_container_width=True)
+    
+    with col2:
+        st.markdown("### Risk Breakdown")
+        for risk in ["Low", "Medium", "High", "Critical"]:
+            count = risk_counts.get(risk, 0)
+            pct = (count / total_tasks * 100) if total_tasks > 0 else 0
+            st.markdown(f"**{risk}**: {count} ({pct:.1f}%)")
+    
+    st.markdown("---")
+    
+    # Filter and sort options
+    has_phase_col = "phase" in assign_df.columns and assign_df["phase"].notna().any()
+    
+    if has_phase_col:
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            filter_risk = st.multiselect(
+                "Filter by Risk",
+                options=["Low", "Medium", "High", "Critical"],
+                default=["Low", "Medium", "High", "Critical"],
+                key="alloc_filter_risk_phase"
+            )
+        with col2:
+            filter_assignee = st.multiselect(
+                "Filter by Assignee",
+                options=sorted(assign_df["assignee"].unique().tolist()),
+                default=sorted(assign_df["assignee"].unique().tolist()),
+                key="alloc_filter_assignee_phase"
+            )
+        with col3:
+            filter_phase = st.multiselect(
+                "Filter by Phase",
+                options=sorted(assign_df["phase"].dropna().unique().tolist()),
+                default=sorted(assign_df["phase"].dropna().unique().tolist()),
+                key="alloc_filter_phase"
+            )
+        with col4:
+            sort_by = st.selectbox(
+                "Sort by",
+                options=["Risk Band", "Priority", "Phase", "Task ID", "Assignee"],
+                index=0
+            )
+        
+        # Filter dataframe
+        filtered_df = assign_df[
+            (assign_df["risk_band"].isin(filter_risk)) &
+            (assign_df["assignee"].isin(filter_assignee)) &
+            (assign_df["phase"].isin(filter_phase))
+        ]
+    else:
+        col1, col2, col3 = st.columns(3)
+    with col1:
+        filter_risk = st.multiselect(
+            "Filter by Risk",
+            options=["Low", "Medium", "High", "Critical"],
+            default=["Low", "Medium", "High", "Critical"],
+            key="alloc_filter_risk_no_phase"
+        )
+    with col2:
+        filter_assignee = st.multiselect(
+            "Filter by Assignee",
+            options=sorted(assign_df["assignee"].unique().tolist()),
+            default=sorted(assign_df["assignee"].unique().tolist()),
+            key="alloc_filter_assignee_no_phase"
+        )
+    with col3:
+        sort_by = st.selectbox(
+            "Sort by",
+            options=["Risk Band", "Priority", "Task ID", "Assignee"],
+            index=0
+        )
+    
+    # Filter dataframe
+    filtered_df = assign_df[
+        (assign_df["risk_band"].isin(filter_risk)) &
+        (assign_df["assignee"].isin(filter_assignee))
+    ]
+    
+    # Sort
+    if sort_by == "Risk Band":
+        risk_order = {"Low": 0, "Medium": 1, "High": 2, "Critical": 3}
+        filtered_df = filtered_df.copy()
+        filtered_df["_risk_order"] = filtered_df["risk_band"].map(risk_order)
+        filtered_df = filtered_df.sort_values(["_risk_order", "priority"]).drop(columns=["_risk_order"])
+    elif sort_by == "Priority":
+        prio_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+        filtered_df = filtered_df.copy()
+        filtered_df["_prio_order"] = filtered_df["priority"].astype(str).str.lower().map(prio_order).fillna(99)
+        filtered_df = filtered_df.sort_values(["_prio_order", "risk_band"]).drop(columns=["_prio_order"])
+    elif sort_by == "Phase" and has_phase_col:
+        filtered_df = filtered_df.sort_values(["phase", "risk_band"])
+    elif sort_by == "Task ID":
+        filtered_df = filtered_df.sort_values("task_id")
+    else:
+        filtered_df = filtered_df.sort_values(["assignee", "risk_band"])
+    
+    # Display table with styling
+    display_cols = [
+        "task_id", "task_name", "department", "phase", "priority", "assignee", "work_size",
+        "risk_band", "skill_risk", "schedule_risk", "expected_delay_days"
+    ]
+    # Remove phase if not available
+    if "phase" not in filtered_df.columns:
+        display_cols = [c for c in display_cols if c != "phase"]
+    
+    st.dataframe(
+        filtered_df[display_cols],
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "risk_band": st.column_config.TextColumn("Risk", width="small"),
+            "skill_risk": st.column_config.NumberColumn("Skill Risk", format="%.0f", width="small"),
+            "schedule_risk": st.column_config.NumberColumn("Schedule Risk", format="%.0f", width="small"),
+            "expected_delay_days": st.column_config.NumberColumn("Delay (days)", format="%d", width="small"),
+        }
+    )
+
+# TAB 3: WORKLOAD ANALYSIS
+# ============================================
+with tabs[2]:
     st.header("Workload Analysis")
     st.caption("Resource utilization and capacity planning")
     
@@ -2182,9 +2257,9 @@ with tabs[3]:
     )
 
 # ============================================
-# TAB 5: TASK DETAILS
+# TAB 4: TASK DETAILS
 # ============================================
-with tabs[4]:
+with tabs[3]:
     st.header("Task Details & Analysis")
     
     selected = st.selectbox(
