@@ -1063,7 +1063,7 @@ if not st.session_state.allocation_complete:
                 </div>
             """, unsafe_allow_html=True)
     
-    st.markdown('<div style="height: 2rem;"></div>', unsafe_allow_html=True)
+    st.markdown('<div style="height: 3rem;"></div>', unsafe_allow_html=True)
     
     if not (task_file and people_file):
         st.markdown("""
@@ -1080,6 +1080,225 @@ if not st.session_state.allocation_complete:
             </div>
         """, unsafe_allow_html=True)
         st.stop()
+    
+    # ============================================
+    # START ALLOCATION ENGINE BUTTON (Appears after file upload)
+    # ============================================
+    st.markdown("""
+        <div style="
+            margin: 4rem 0 3rem 0;
+            text-align: center;
+        ">
+            <div style="
+                max-width: 800px;
+                margin: 0 auto;
+                padding: 3rem 2rem;
+                background: white;
+                border-radius: 20px;
+                box-shadow: 
+                    0 4px 16px rgba(0, 0, 0, 0.06),
+                    0 12px 40px rgba(0, 0, 0, 0.08);
+                border: 1px solid #F1F5F9;
+            ">
+                <div style="
+                    width: 80px;
+                    height: 80px;
+                    background: linear-gradient(135deg, #0F172A 0%, #334155 100%);
+                    border-radius: 50%;
+                    margin: 0 auto 2rem auto;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.25);
+                    animation: pulse-engine 2s ease-in-out infinite;
+                ">
+                    <div style="
+                        font-size: 2.5rem;
+                        color: white;
+                        animation: rotate-engine 3s linear infinite;
+                    ">⚙️</div>
+                </div>
+                <h2 style="
+                    color: #0F172A;
+                    font-size: 2rem;
+                    font-weight: 700;
+                    margin: 0 0 1rem 0;
+                    letter-spacing: -0.02em;
+                ">Allocation Engine Ready</h2>
+                <p style="
+                    color: #64748B;
+                    font-size: 1.0625rem;
+                    line-height: 1.7;
+                    margin: 0 0 2.5rem 0;
+                    max-width: 600px;
+                    margin-left: auto;
+                    margin-right: auto;
+                ">
+                    Click below to analyze skills, match employees to tasks,<br/>
+                    and optimize resource allocation
+                </p>
+            </div>
+        </div>
+        <style>
+            @keyframes pulse-engine {
+                0%, 100% {
+                    transform: scale(1);
+                    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.25);
+                }
+                50% {
+                    transform: scale(1.05);
+                    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.35);
+                }
+            }
+            @keyframes rotate-engine {
+                from { transform: rotate(0deg); }
+                to { transform: rotate(360deg); }
+            }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
+    with col_btn2:
+        st.markdown("""
+            <style>
+                div[data-testid="stButton"] button[kind="primary"] {
+                    height: 3.5rem !important;
+                    font-size: 1.0625rem !important;
+                    font-weight: 600 !important;
+                    background: linear-gradient(135deg, #0F172A 0%, #1E293B 50%, #0F172A 100%) !important;
+                    box-shadow: 
+                        0 6px 20px rgba(15, 23, 42, 0.25),
+                        0 2px 8px rgba(15, 23, 42, 0.15),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+                    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+                }
+                div[data-testid="stButton"] button[kind="primary"]:hover {
+                    transform: translateY(-3px) !important;
+                    box-shadow: 
+                        0 12px 32px rgba(15, 23, 42, 0.35),
+                        0 6px 16px rgba(15, 23, 42, 0.25),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+                    background: linear-gradient(135deg, #1E293B 0%, #334155 50%, #1E293B 100%) !important;
+                }
+            </style>
+        """, unsafe_allow_html=True)
+        run_allocation = st.button(
+            "⚙️ Start Allocation Engine",
+            type="primary",
+            use_container_width=True,
+            help="Begin intelligent resource allocation",
+            key="start_engine_btn"
+        )
+    
+    if run_allocation:
+        # Wayve-style loading state
+        import time
+        
+        loading_container = st.empty()
+        
+        steps = [
+            ("Analyzing skill requirements", 0.2),
+            ("Matching employees to tasks", 0.5),
+            ("Optimizing resource allocation", 0.7),
+            ("Calculating risk factors", 0.9),
+            ("Finalizing assignments", 1.0)
+        ]
+        
+        for step_text, progress_val in steps:
+            loading_container.markdown(f"""
+                <div style="
+                    text-align: center;
+                    padding: 4rem 3rem;
+                    max-width: 700px;
+                    margin: 3rem auto;
+                ">
+                    <div style="
+                        width: 100%;
+                        height: 4px;
+                        background: linear-gradient(90deg,
+                            #F8FAFC 0%,
+                            #F1F5F9 50%,
+                            #F8FAFC 100%
+                        );
+                        border-radius: 2px;
+                        overflow: hidden;
+                        margin-bottom: 2.5rem;
+                    ">
+                        <div style="
+                            width: {progress_val * 100}%;
+                            height: 100%;
+                            background: linear-gradient(90deg, #0F172A 0%, #334155 100%);
+                            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+                            box-shadow: 0 0 12px rgba(15, 23, 42, 0.3);
+                        "></div>
+                    </div>
+                    <p style="
+                        color: #475569;
+                        font-size: 1.125rem;
+                        font-weight: 500;
+                        margin: 0;
+                        letter-spacing: -0.01em;
+                    ">{step_text}</p>
+                </div>
+            """, unsafe_allow_html=True)
+            time.sleep(0.4)
+        
+        st.session_state.allocation_complete = True
+        loading_container.empty()
+        
+        # Elegant success state
+        st.markdown("""
+            <div class="wayve-card" style="
+                text-align: center;
+                padding: 3rem 2rem;
+                max-width: 600px;
+                margin: 3rem auto;
+                background: linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%);
+                border: 1px solid #D1FAE5;
+            ">
+                <div style="
+                    width: 64px;
+                    height: 64px;
+                    background: white;
+                    border-radius: 50%;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin-bottom: 1.5rem;
+                    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
+                ">
+                    <span style="color: #10B981; font-size: 2rem; font-weight: 700;">✓</span>
+                </div>
+                <h3 style="
+                    color: #065F46;
+                    font-size: 1.5rem;
+                    font-weight: 600;
+                    margin: 0 0 0.5rem 0;
+                    letter-spacing: -0.02em;
+                ">Allocation Complete</h3>
+                <p style="
+                    color: #059669;
+                    font-size: 1rem;
+                    margin: 0;
+                ">Redirecting to results</p>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        time.sleep(0.8)
+        st.rerun()
+    
+    st.markdown("""
+        <div style="
+            text-align: center;
+            padding: 1.5rem;
+            margin: 2rem 0;
+            color: #94A3B8;
+            font-size: 0.9375rem;
+        ">
+            Configure task skills below, then return to start allocation
+        </div>
+    """, unsafe_allow_html=True)
     
     # Load and validate data
     try:
@@ -1329,164 +1548,6 @@ if not st.session_state.allocation_complete:
     # Store data in session state
     st.session_state.tasks_raw = tasks_raw
     st.session_state.people_raw = people_raw
-    
-    # ============================================
-    # START ALLOCATION BUTTON - WAYVE STYLE
-    # ============================================
-    st.markdown("""
-        <div style="
-            margin: 6rem 0;
-            padding: 5rem 0;
-            background: linear-gradient(180deg,
-                rgba(248, 250, 252, 0) 0%,
-                rgba(248, 250, 252, 0.8) 30%,
-                rgba(248, 250, 252, 0.8) 70%,
-                rgba(248, 250, 252, 0) 100%
-            );
-        ">
-            <div style="text-align: center; max-width: 700px; margin: 0 auto;">
-                <h2 style="
-                    color: #0F172A;
-                    font-size: 2.5rem;
-                    font-weight: 700;
-                    letter-spacing: -0.04em;
-                    margin-bottom: 1.5rem;
-                    line-height: 1.2;
-                ">Ready to allocate resources</h2>
-                <p style="
-                    color: #64748B;
-                    font-size: 1.125rem;
-                    line-height: 1.8;
-                    margin-bottom: 3rem;
-                    font-weight: 400;
-                ">
-                    Our intelligent engine will analyze skills, match employees to tasks,
-                    and optimize assignments based on capacity and risk factors
-                </p>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
-    with col_btn2:
-        run_allocation = st.button(
-            "Start Allocation",
-            type="primary",
-            use_container_width=True,
-            help="Begin intelligent resource allocation"
-        )
-    
-    if run_allocation:
-        # Wayve-style loading state
-        import time
-        
-        loading_container = st.empty()
-        
-        steps = [
-            ("Analyzing skill requirements", 0.2),
-            ("Matching employees to tasks", 0.5),
-            ("Optimizing resource allocation", 0.7),
-            ("Calculating risk factors", 0.9),
-            ("Finalizing assignments", 1.0)
-        ]
-        
-        for step_text, progress_val in steps:
-            loading_container.markdown(f"""
-                <div style="
-                    text-align: center;
-                    padding: 4rem 3rem;
-                    max-width: 700px;
-                    margin: 3rem auto;
-                ">
-                    <div style="
-                        width: 100%;
-                        height: 4px;
-                        background: linear-gradient(90deg,
-                            #F8FAFC 0%,
-                            #F1F5F9 50%,
-                            #F8FAFC 100%
-                        );
-                        border-radius: 2px;
-                        overflow: hidden;
-                        margin-bottom: 2.5rem;
-                    ">
-                        <div style="
-                            width: {progress_val * 100}%;
-                            height: 100%;
-                            background: linear-gradient(90deg, #0F172A 0%, #334155 100%);
-                            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-                            box-shadow: 0 0 12px rgba(15, 23, 42, 0.3);
-                        "></div>
-                    </div>
-                    <p style="
-                        color: #475569;
-                        font-size: 1.125rem;
-                        font-weight: 500;
-                        margin: 0;
-                        letter-spacing: -0.01em;
-                    ">{step_text}</p>
-                </div>
-            """, unsafe_allow_html=True)
-            time.sleep(0.4)
-        
-        st.session_state.allocation_complete = True
-        loading_container.empty()
-        
-        # Elegant success state
-        st.markdown("""
-            <div class="wayve-card" style="
-                text-align: center;
-                padding: 3rem 2rem;
-                max-width: 600px;
-                margin: 3rem auto;
-                background: linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%);
-                border: 1px solid #D1FAE5;
-            ">
-                <div style="
-                    width: 64px;
-                    height: 64px;
-                    background: white;
-                    border-radius: 50%;
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    margin-bottom: 1.5rem;
-                    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
-                ">
-                    <span style="color: #10B981; font-size: 2rem; font-weight: 700;">✓</span>
-                </div>
-                <h3 style="
-                    color: #065F46;
-                    font-size: 1.5rem;
-                    font-weight: 600;
-                    margin: 0 0 0.5rem 0;
-                    letter-spacing: -0.02em;
-                ">Allocation Complete</h3>
-                <p style="
-                    color: #059669;
-                    font-size: 1rem;
-                    margin: 0;
-                ">Redirecting to results</p>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        time.sleep(0.8)
-        st.rerun()
-    
-    # Minimal instruction
-    st.markdown("""
-        <div style="
-            text-align: center;
-            padding: 1rem 0 3rem 0;
-        ">
-            <p style="
-                color: #9CA3AF;
-                font-size: 0.875rem;
-                margin: 0;
-            ">Configure task skills below, then return to start allocation</p>
-        </div>
-    """, unsafe_allow_html=True)
-    st.stop()
 
 # ============================================
 # LOAD DATA FROM SESSION STATE
